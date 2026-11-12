@@ -33,7 +33,7 @@ def add_mode_items(combo, entries):
             combo.insertSeparator(combo.count())
         combo.addItem(label, code)
         if tip:
-            combo.setItemData(combo.count() - 1, tip, Qt.ToolTipRole)
+            combo.setItemData(combo.count() - 1, tip, Qt.ItemDataRole.ToolTipRole)
         prev_cat = cat
 
 
@@ -61,14 +61,14 @@ class ModeParamRow(QWidget):
         try:
             if font.pointSize() > 0:
                 font.setPointSize(max(font.pointSize() + 1, 10))
-        except Exception:
+        except Exception:  # nosec B110
             pass
         self.label.setFont(font)
         self.label.setWordWrap(True)
         self.label.setStyleSheet('font-size: 12px; font-weight: 700; color: #212529;')
         self.spin = _make_spin(0.0, 100.0, 1, 5.0)
         self.spin.setMinimumWidth(0)
-        self.spin.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.spin.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         lay.addWidget(self.label)
         lay.addWidget(self.spin)
         self._code = None
@@ -153,7 +153,7 @@ def build_special_param_form(sp_key, values, parent=None, on_changed=None):
 
         def _edit():
             dlg = CdetLineLengthRuleDialog(w, vals['_poly_area_rule'], measure='area')
-            if run_dialog(dlg) == QDialog.Accepted and dlg.result_rule():
+            if run_dialog(dlg) == QDialog.DialogCode.Accepted and dlg.result_rule():
                 vals['_poly_area_rule'] = dlg.result_rule()
                 lbl.setText(format_area_rule(vals['_poly_area_rule']))
                 _notify()

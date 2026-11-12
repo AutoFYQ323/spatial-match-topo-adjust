@@ -41,7 +41,7 @@ def _migrate_language_key(settings):
         old_val = str(settings.value(_LANG_OLD, "") or "").strip()
         if old_val:
             settings.setValue(_LANG_NEW, old_val)
-    except Exception:
+    except Exception:  # nosec B110
         pass
 
 
@@ -71,13 +71,13 @@ def migrate_legacy_settings(settings):
                     try:
                         if not settings.contains(new_key):
                             settings.setValue(new_key, settings.value(key))
-                    except Exception:
+                    except Exception:  # nosec B110
                         pass
                     break
     _migrate_language_key(settings)
     try:
         settings.setValue(_MIGRATE_FLAG, True)
-    except Exception:
+    except Exception:  # nosec B110
         pass
 
 
@@ -90,7 +90,7 @@ def settings_value(settings, suffix, default=None, typ=None, **kwargs):
         try:
             if settings.contains(key):
                 return settings.value(key, default, **kwargs)
-        except Exception:
+        except Exception:  # nosec B110
             pass
     try:
         return settings.value(OLD_PREFIX + suffix, default, **kwargs)

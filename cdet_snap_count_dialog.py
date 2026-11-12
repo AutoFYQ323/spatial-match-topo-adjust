@@ -82,7 +82,7 @@ class CdetSnapCountRuleDialog(QDialog):
         )
 
         self._grp.buttonClicked.connect(self._sync)
-        bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        bb = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         localize_button_box(bb)
         bb.accepted.connect(self._on_ok)
         bb.rejected.connect(self.reject)

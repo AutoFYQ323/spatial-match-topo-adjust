@@ -40,7 +40,7 @@ except ImportError:
             return None
 
 from .i18n import tr as _i18n_tr
-from .qtutil import run_dialog, run_menu, AppMessageBox as QMessageBox
+from .qtutil import add_features_fast, run_dialog, run_menu, tick_progress, AppMessageBox as QMessageBox
 
 
 def tr(text):
@@ -64,9 +64,9 @@ def _unique_layer_name(project, base_name):
 
 def _create_memory_layer(name, geom_type, crs, fields):
     type_map = {
-        QgsWkbTypes.PointGeometry: 'Point',
-        QgsWkbTypes.LineGeometry: 'LineString',
-        QgsWkbTypes.PolygonGeometry: 'Polygon',
+        QgsWkbTypes.GeometryType.PointGeometry: 'Point',
+        QgsWkbTypes.GeometryType.LineGeometry: 'LineString',
+        QgsWkbTypes.GeometryType.PolygonGeometry: 'Polygon',
     }
     type_str = type_map.get(geom_type, 'Point')
     uri = f'{type_str}?crs={crs.authid()}'
@@ -135,9 +135,9 @@ def _best_translate_for_feature(tg, ref_entries, ref_idx, tol, exclude_layer_id=
         rg = e['geom']
         try:
             d = float(tg.distance(rg))
-        except Exception:
+        except Exception:  # nosec B112
             continue
-        if d > tol:
+        if d > tol or (best is not None and d >= best[0]):
             continue
         delta = _shortest_delta(tg, rg)
         if delta is None:
@@ -156,9 +156,9 @@ def _best_translate_for_feature(tg, ref_entries, ref_idx, tol, exclude_layer_id=
     return dx, dy, dist
 
 
-_P = QgsWkbTypes.PointGeometry
-_L = QgsWkbTypes.LineGeometry
-_G = QgsWkbTypes.PolygonGeometry
+_P = QgsWkbTypes.GeometryType.PointGeometry
+_L = QgsWkbTypes.GeometryType.LineGeometry
+_G = QgsWkbTypes.GeometryType.PolygonGeometry
 
 # 锚点落在要素几何上时，近距模式可以用要素距离提前剔除（几何中心可能在面外，不能这么剔）。
 _ANCHOR_ON_GEOM = frozenset({
@@ -222,8 +222,8 @@ def is_withdrawn_line_line_mode(code):
 def layers_are_line_line(t_layer, r_layer):
     try:
         return (
-            _layer_geom_class(t_layer) == QgsWkbTypes.LineGeometry
-            and _layer_geom_class(r_layer) == QgsWkbTypes.LineGeometry
+            _layer_geom_class(t_layer) == QgsWkbTypes.GeometryType.LineGeometry
+            and _layer_geom_class(r_layer) == QgsWkbTypes.GeometryType.LineGeometry
         )
     except Exception:
         return False
@@ -489,7 +489,7 @@ def _geom_xy(geom):
     try:
         if geom.type() == _P:
             return QgsPointXY(geom.asPoint())
-    except Exception:
+    except Exception:  # nosec B110
         pass
     try:
         return QgsPointXY(next(geom.vertices()))
@@ -518,7 +518,7 @@ def _all_vertices(geom):
     try:
         for v in geom.vertices():
             out.append(QgsPointXY(v))
-    except Exception:
+    except Exception:  # nosec B110
         pass
     return out
 
@@ -535,7 +535,7 @@ def _line_parts(geom):
             line = geom.asPolyline() or []
             if line:
                 return [line]
-    except Exception:
+    except Exception:  # nosec B110
         pass
     verts = _all_vertices(geom)
     return [verts] if verts else []
@@ -755,7 +755,7 @@ def _translate_by_mode(tg, ref_entries, ref_idx, tol, spec, exclude_layer_id=Non
                 continue
             try:
                 dist = float(tg.distance(entry['geom']))
-            except Exception:
+            except Exception:  # nosec B112
                 continue
             if dist <= tol:
                 ranked.append((dist, cid))
@@ -780,7 +780,7 @@ def _translate_by_mode(tg, ref_entries, ref_idx, tol, spec, exclude_layer_id=Non
         if prefilter:
             try:
                 dist = float(tg.distance(entry['geom']))
-            except Exception:
+            except Exception:  # nosec B112
                 continue
             if dist > tol:
                 continue
@@ -894,7 +894,7 @@ def run_move(
     # CRS：以第一个被移图层为准。两侧分类分开：同一图层在两边勾选可以不同。
     base_crs = target_layers[0].crs()
     ref_entries, ref_idx = _build_ref_state(
-        ref_layers, base_crs, project, ref_category_filters
+        ref_layers, base_crs, project, ref_category_filters, geometry_only=True,
     )
     if not ref_entries:
         msg = tr('参考图层没有可用要素。')
@@ -909,7 +909,7 @@ def run_move(
     for lyr in target_layers:
         try:
             total_feats += lyr.featureCount()
-        except Exception:
+        except Exception:  # nosec B110
             pass
 
     progress = None
@@ -917,7 +917,7 @@ def run_move(
         progress = QProgressDialog(
             tr('计算移动预览…'), tr('取消'), 0, max(total_feats, 1), iface.mainWindow()
         )
-        progress.setWindowModality(Qt.WindowModal)
+        progress.setWindowModality(Qt.WindowModality.WindowModal)
         progress.setMinimumDuration(400)
         progress.setValue(0)
 
@@ -945,22 +945,22 @@ def run_move(
 
         for feature in iter_features(layer, category_filters):
             processed += 1
-            if progress:
-                progress.setValue(processed)
-                if progress.wasCanceled():
-                    canceled = True
-                    break
+            if tick_progress(progress, processed):
+                canceled = True
+                break
             geom = feature.geometry()
             if geom is None or geom.isEmpty():
                 skipped += 1
                 continue
-            check_geom = QgsGeometry(geom)
             if transform_to_base:
+                check_geom = QgsGeometry(geom)
                 try:
                     check_geom.transform(transform_to_base)
                 except Exception:
                     skipped += 1
                     continue
+            else:
+                check_geom = geom
             excl_lid = layer.id() if same_as_ref else None
             excl_fid = feature.id() if same_as_ref else None
             if spec.get('t') is not None and check_geom.type() != spec['t']:
@@ -1009,12 +1009,12 @@ def run_move(
         if preview_feats:
             pname = _unique_layer_name(project, f'{layer.name()}{_preview_suffix()}')
             pl = _create_memory_layer(pname, geom_type, layer_crs, layer.fields())
-            pl.dataProvider().addFeatures(preview_feats)
+            add_features_fast(pl, preview_feats)
             pl.updateExtents()
             pl.setCustomProperty(PREVIEW_FLAG, True)
             try:
                 apply_memory_output_style(pl)
-            except Exception:
+            except Exception:  # nosec B110
                 pass
             project.addMapLayer(pl)
             preview_layers.append(pl)
@@ -1048,7 +1048,7 @@ def run_move(
     preview_names = '\n'.join(f'  → {n}' for n in result['preview_layers'])
     box = QMessageBox(iface.mainWindow())
     box.setWindowTitle(tr('移动预览'))
-    box.setIcon(QMessageBox.Question)
+    box.setIcon(QMessageBox.Icon.Question)
     box.setText(
         tr('已生成移动预览（整要素平移，形状不变）。\n'
            '移动模式：{0}\n'
@@ -1056,9 +1056,9 @@ def run_move(
            '预览图层：\n{3}\n\n'
            '是否写回原图层几何？').format(mode_label, moved, skipped, preview_names)
     )
-    btn_write = box.addButton(tr('写回原图层'), QMessageBox.AcceptRole)
-    btn_keep = box.addButton(tr('仅保留预览'), QMessageBox.ActionRole)
-    btn_discard = box.addButton(tr('丢弃预览'), QMessageBox.RejectRole)
+    btn_write = box.addButton(tr('写回原图层'), QMessageBox.ButtonRole.AcceptRole)
+    btn_keep = box.addButton(tr('仅保留预览'), QMessageBox.ButtonRole.ActionRole)
+    btn_discard = box.addButton(tr('丢弃预览'), QMessageBox.ButtonRole.RejectRole)
     box.setDefaultButton(btn_write)
     run_dialog(box)
     clicked = box.clickedButton()
@@ -1083,15 +1083,36 @@ def run_move(
         if not writes:
             continue
         if not layer.isEditable():
+            provider_ok = False
+            try:
+                provider_ok = bool(layer.dataProvider().changeGeometryValues(
+                    {fid: geom for fid, geom in writes}
+                ))
+            except Exception:
+                provider_ok = False
+            if provider_ok:
+                written_count += len(writes)
+                try:
+                    layer.updateExtents()
+                    layer.triggerRepaint()
+                    layer.reload()
+                except Exception:  # nosec B110
+                    pass
+                continue
             if not layer.startEditing():
                 write_errors.append(
                     tr('{0}：无法进入编辑模式').format(layer.name())
                 )
                 continue
         ok_all = True
-        for fid, new_g in writes:
-            if not layer.changeGeometry(fid, new_g):
-                ok_all = False
+        layer.blockSignals(True)
+        try:
+            for fid, new_g in writes:
+                if not layer.changeGeometry(fid, new_g):
+                    ok_all = False
+                    break
+        finally:
+            layer.blockSignals(False)
         if ok_all:
             if not layer.commitChanges():
                 write_errors.append(
@@ -1101,19 +1122,19 @@ def run_move(
                 )
                 try:
                     layer.rollBack()
-                except Exception:
+                except Exception:  # nosec B110
                     pass
             else:
                 written_count += len(writes)
                 try:
                     layer.triggerRepaint()
-                except Exception:
+                except Exception:  # nosec B110
                     pass
         else:
             write_errors.append(tr('{0}：部分要素写回失败，已回滚').format(layer.name()))
             try:
                 layer.rollBack()
-            except Exception:
+            except Exception:  # nosec B110
                 pass
 
     remove_move_preview_layers(project)

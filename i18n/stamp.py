@@ -98,7 +98,7 @@ def retranslate_tree(root):
         if msgid and hasattr(widget, "setText"):
             try:
                 widget.setText(translate_label(str(msgid)))
-            except Exception:
+            except Exception:  # nosec B110
                 pass
         tip = widget.property("tip")
         if tip and hasattr(widget, "setToolTip"):

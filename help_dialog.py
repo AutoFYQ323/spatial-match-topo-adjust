@@ -67,20 +67,20 @@ HELP_PAGES = (
             "左右两个图层列各套一圈与右列参数区同类的浅色细边框，包住该列标题行、列表和底部筛钮，不包窗口顶栏、右列中区参数和底栏。列表不再套在已撤的「图层选择」分组框里。",
             "列标题左侧有图标。筛钮图标下方显示当前语言标题：吸附检测和移动是点、线、面、全部；字段命名是点、线、面、图层组。图层组只用于筛选，不会在列表里增加图层组行。标题不得裁切，也不得盖住列表最后一行。",
             "列表中图层名后可显示要素个数，仅供查看。方案匹配和查看自检使用图层真名，不从带个数的显示文字反解析。",
-            "有分类的图层，行前有 ◆◆ 标记，标题加粗并以玫红色显示（不是报错）。点击图层名前的 ◆◆ 选择分类（点行内其它位置只切换这一条的选中，不弹分类）。按住左键拖动多选时也不弹出。分类弹窗按各分类条件现场计要素数，复选和顶栏图层名以「名称(数量)」显示；数量只作展示，不参与方案匹配反解析。尚未做过子集勾选时默认全选，表示整层。",
+            "有分类的图层，行前有 ◆◆ 标记，标题加粗并以玫红色显示（不是报错）。点击图层名前的 ◆◆ 选择分类（点行内其它位置只选中图层，不弹分类，再点也不会取消）。按住 Ctrl、Shift 或拖动多选时也不弹出。分类弹窗按各分类条件现场计要素数，复选和顶栏图层名以「名称(数量)」显示；数量只作展示，不参与方案匹配反解析。尚未做过子集勾选时默认全选，表示整层。",
             "右侧顶栏有语言、帮助、导入、导出。导入和导出在任一功能下都可用，不会因为当前页或吸附方案库里没有方案而禁用，也不会因此切换当前功能。",
             "三个功能的方案库分开存放。导出时先选择「全部导出」或某一个功能；选择单一功能后再勾选该库中的方案。全部导出把三个库的全部方案写入一个总包，只含方案配置，不含图层数据。",
             "导入按文件自动识别并写入对应库。旧版单功能文件、旧总包、以及没有 kind 的旧吸附文件仍可导入；没有 kind 的旧吸附文件只进入吸附库。无法识别的文件会明确失败，不会把总包或旧吸附文件误写入字段或移动库。新导出只使用本版标识。",
             "语言仅在首次尚未保存语言时读取 QGIS 界面语言，再试系统语言；属于本插件九种语言则采用，否则使用英文。您选定之后只使用本插件自己保存的语言，下次打开不再跟随 QGIS。阿拉伯语只更换文字，不翻转界面。切换语言只更换界面用词和筛钮提示，不重建两个图层列表，左右 1∶1 和三列 5∶2 保持不变，列表不得变形。",
             "下拉框不能用鼠标滚轮改值，弹出的列表仍可滚动。容差转盘可以使用滚轮。",
-            "底栏始终可见，提供功能切换、刷新和执行。点图层列表的空白处不会取消已经选中的图层。点某一条就选中它，再点一次只取消这一条，不必按住 Ctrl。按住鼠标左键拖动，可以一次选中划过的多条。点刷新会清空选择并重新载入列表。中区标题紧贴对应控件。参数放得下时不出现滚动条；文字更高、放不下时，只在中区内部滚动，窗口尺寸不变。三个模式的方案下拉标题均为「批量方案」。吸附和移动将该组放在中区底部，其余参数在其上方均匀留白，控件保持各自本来的高度，不再互相重叠。",
+            "底栏始终可见，提供功能切换、刷新和执行。点图层列表的空白处不会取消已经选中的图层。不按 Ctrl 时，点哪一条，选中的就是哪一条，再点已经选中的那一条也不会取消。按住 Ctrl 再点可以多选或取消其中一条，按住 Shift 再点可以连选一段，按住左键拖过多条则选中划过的那些。点刷新会清空选择并重新载入列表。中区标题紧贴对应控件。参数放得下时不出现滚动条；文字更高、放不下时，只在中区内部滚动，窗口尺寸不变。三个模式的方案下拉标题均为「批量方案」。吸附和移动将该组放在中区底部，其余参数在其上方均匀留白，控件保持各自本来的高度，不再互相重叠。",
         ),
     ),
     (
         "吸附检测",
         (
             "吸附检测按容差和空间关系，检查判断图层的要素是否命中参考图层，并可按「提取已吸附」输出已命中或未命中的要素。",
-            "标准模式需要参考图层。部分特殊检测不需要参考图层，界面会自行处理。检测方式在右侧列表上方合并为一个下拉：第一项且默认为「标准」，其后为现行特殊检测项，并按当前几何类型过滤。若切换图层后当前特殊项不再适用，回退到「标准」，不会自动改成其它特殊项。该下拉遵守滚轮锁。",
+            "标准模式需要参考图层。选中不需要参考图层的特殊检测时，会清掉参考图层的选择，并把参考列表及其点、线、面、全部按钮一起变灰，不能再点。检测方式在右侧列表上方合并为一个下拉：第一项且默认为「标准」，其后为现行特殊检测项，并只按当前选中的判断图层过滤，不看参考图层。需要某种参考几何的检查，选中之后参考列表只留下该几何。若切换判断图层后当前特殊项不再适用，回退到「标准」，不会自动改成其它特殊项。该下拉遵守滚轮锁。",
             "中区按钮自上而下各占一行：添加、查看、方案、样式。可把当前图层和参数加入批量方案；用查看管理子任务（按钮只显示短标题「查看」，图层是否齐全写在悬停提示里）；用样式配置结果层符号。",
             "结果写到临时图层，不直接改原图层几何。",
         ),
@@ -112,12 +112,12 @@ class HelpDialog(QDialog):
         self.setMinimumSize(560, 480)
         self.resize(640, 520)
         try:
-            self.setWindowFlags(self.windowFlags() | Qt.WindowCloseButtonHint)
-        except Exception:
+            self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowCloseButtonHint)
+        except Exception:  # nosec B110
             pass
         try:
-            self.setLayoutDirection(Qt.LeftToRight)
-        except Exception:
+            self.setLayoutDirection(Qt.LayoutDirection.LeftToRight)
+        except Exception:  # nosec B110
             pass
 
         base_size = 0
@@ -125,9 +125,22 @@ class HelpDialog(QDialog):
             base_size = parent.font().pointSize()
         if base_size <= 0:
             base_size = self.font().pointSize() if self.font().pointSize() > 0 else 9
+        # Two sizes above the main window font. A local stylesheet is required:
+        # the main window stylesheet would otherwise keep this dialog gray and 11px.
+        body_pt = base_size + 2
         body_font = QFont(self.font())
-        body_font.setPointSize(base_size + 4)
-        body_font.setBold(True)
+        body_font.setPointSize(body_pt)
+        body_font.setBold(False)
+        self.setStyleSheet(
+            "QDialog { background: #ffffff; color: #111111; }"
+            "QTabWidget::pane { background: #ffffff; border: 1px solid #e6e6e6; }"
+            "QTabBar::tab { background: #f3f3f3; color: #111111; padding: 6px 12px; }"
+            "QTabBar::tab:selected { background: #ffffff; }"
+            "QScrollArea { background: #ffffff; border: none; }"
+            "QWidget#helpPage { background: #ffffff; }"
+            "QLabel#helpBody { background: #ffffff; color: #111111; font-size: %dpt; font-weight: 500; }"
+            % body_pt
+        )
 
         root = QVBoxLayout(self)
         tabs = QTabWidget(self)
@@ -137,35 +150,47 @@ class HelpDialog(QDialog):
             scroll.setFrameShape(scroll.NoFrame if hasattr(scroll, "NoFrame") else 0)
             try:
                 from qgis.PyQt.QtWidgets import QFrame
-                scroll.setFrameShape(QFrame.NoFrame)
-            except Exception:
+                scroll.setFrameShape(QFrame.Shape.NoFrame)
+            except Exception:  # nosec B110
+                pass
+            scroll.setStyleSheet("QScrollArea { background: #ffffff; border: none; }")
+            try:
+                scroll.viewport().setStyleSheet("background: #ffffff;")
+            except Exception:  # nosec B110
                 pass
             inner = QWidget()
+            inner.setObjectName("helpPage")
+            inner.setStyleSheet("QWidget#helpPage { background: #ffffff; }")
             lay = QVBoxLayout(inner)
-            lay.setContentsMargins(12, 12, 12, 12)
-            lay.setSpacing(12)
+            lay.setContentsMargins(16, 14, 16, 14)
+            lay.setSpacing(14)
             for msgid in paragraphs:
                 lab = QLabel()
+                lab.setObjectName("helpBody")
                 lab.setWordWrap(True)
                 lab.setProperty("msgid", msgid)
-                lab.setTextFormat(Qt.RichText)
+                lab.setTextFormat(Qt.TextFormat.RichText)
                 lab.setText(_apply_help_highlights(tr(msgid)))
                 lab.setFont(body_font)
-                lab.setTextInteractionFlags(Qt.TextSelectableByMouse)
-                lab.setAlignment(Qt.AlignTop | Qt.AlignLeft)
+                lab.setStyleSheet(
+                    "QLabel#helpBody { background: #ffffff; color: #111111; font-size: %dpt; font-weight: 500; }"
+                    % body_pt
+                )
+                lab.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+                lab.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
                 lay.addWidget(lab)
             lay.addStretch(1)
             scroll.setWidget(inner)
             tabs.addTab(scroll, tr(title))
         root.addWidget(tabs, 1)
 
-        box = QDialogButtonBox(QDialogButtonBox.Close)
+        box = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
         box.rejected.connect(self.reject)
         try:
             box.accepted.connect(self.accept)
-        except Exception:
+        except Exception:  # nosec B110
             pass
-        close_btn = box.button(QDialogButtonBox.Close)
+        close_btn = box.button(QDialogButtonBox.StandardButton.Close)
         if close_btn is not None:
             close_btn.clicked.connect(self.accept)
         localize_button_box(box)

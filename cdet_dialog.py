@@ -11,7 +11,7 @@ from qgis.PyQt.QtWidgets import (QDialog, QWidget, QVBoxLayout, QHBoxLayout,
                                  QListWidgetItem, QDialogButtonBox, QAbstractItemView,
                                  QFileDialog, QProgressDialog,
                                  QTreeWidget, QTreeWidgetItem, QScrollArea, QAbstractScrollArea, QFrame,
-                                 QStyledItemDelegate, QStyle, QStyleOptionViewItem, QApplication, QRubberBand)
+                                 QStyledItemDelegate, QStyle, QStyleOptionViewItem, QApplication)
 from qgis.PyQt.QtCore import Qt, QEvent, QSize, QPoint, QRect
 from qgis.PyQt.QtGui import QBrush, QColor, QFont, QFontMetrics
 from qgis.core import (
@@ -212,7 +212,7 @@ from .qtutil import (
 from .ui_chrome import (
     language_icon, help_icon, import_icon, export_icon, mode_icon,
     style_icon_button, style_filter_button, style_param_label,
-    configure_fit_combo, param_block, ACTION_BTN_H, FILTER_BTN_H,
+    configure_fit_combo, param_block, ACTION_BTN_H, BOTTOM_BTN_H, FILTER_BTN_H,
 )
 from .settings_compat import (
     settings_value,
@@ -270,24 +270,24 @@ class _CategoryMarkDelegate(QStyledItemDelegate):
         opt.text = ''
         widget = opt.widget
         style = widget.style() if widget is not None else QApplication.style()
-        style.drawControl(QStyle.CE_ItemViewItem, opt, painter, widget)
+        style.drawControl(QStyle.ControlElement.CE_ItemViewItem, opt, painter, widget)
         painter.save()
         rect = opt.rect.adjusted(6, 0, -4, 0)
         fm = opt.fontMetrics
-        selected = bool(opt.state & QStyle.State_Selected)
+        selected = bool(opt.state & QStyle.StateFlag.State_Selected)
         if has:
             font = QFont(opt.font)
             font.setBold(True)
             painter.setFont(font)
             fm = painter.fontMetrics()
             painter.setPen(_CAT_TITLE_COLOR_SELECTED if selected else _CAT_TITLE_COLOR)
-            painter.drawText(rect, int(Qt.AlignVCenter | Qt.AlignLeft), CAT_MARK)
+            painter.drawText(rect, int(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft), CAT_MARK)
             rect = rect.adjusted(fm.horizontalAdvance(CAT_MARK + ' '), 0, 0, 0)
             painter.setPen(_CAT_TITLE_COLOR_SELECTED if selected else _CAT_TITLE_COLOR)
         else:
             painter.setPen(QColor('#ffffff') if selected else QColor('#212529'))
-        shown = fm.elidedText(text, Qt.ElideRight, max(rect.width(), 0))
-        painter.drawText(rect, int(Qt.AlignVCenter | Qt.AlignLeft), shown)
+        shown = fm.elidedText(text, Qt.TextElideMode.ElideRight, max(rect.width(), 0))
+        painter.drawText(rect, int(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft), shown)
         painter.restore()
 
     def sizeHint(self, option, index):
@@ -367,6 +367,10 @@ class CDETDialog(QDialog):
         stamp_tree(self)
         # The composed window title is not one catalog key. Set it after stamping.
         self.setProperty("titleMsgid", None)
+        # init_ui runs before the language is applied, so controls that already
+        # stored a msgid kept the Chinese source. Manual switching repaints them;
+        # do that same repaint once before the window is shown.
+        retranslate_tree(self)
         self._sync_mode_toggle_text()
         language_changed().connect(self._on_language_changed)
 
@@ -394,12 +398,12 @@ class CDETDialog(QDialog):
         lab.setProperty('msgid', msgid)
         lab.setWordWrap(True)
         lab.setMinimumWidth(0)
-        lab.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+        lab.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         lab.setToolTip(self.tr(msgid))
         lay.addWidget(ic, 0)
         lay.addWidget(lab, 1)
         host.setFixedHeight(44)
-        host.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        host.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         return host, lab
 
     def _set_title_text(self, label, msgid):
@@ -409,7 +413,7 @@ class CDETDialog(QDialog):
         label.setProperty('msgid', msgid)
         label.setWordWrap(True)
         label.setMinimumWidth(0)
-        label.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+        label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         label.setToolTip(self.tr(msgid))
 
     def _show_help(self):
@@ -423,11 +427,11 @@ class CDETDialog(QDialog):
         self.setWindowTitle(DISPLAY_NAME)
         self.setMinimumSize(640, 560)
         self.resize(700, 650)
-        self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
+        self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
         try:
-            self.setWindowFlag(Qt.WindowCloseButtonHint, True)
+            self.setWindowFlag(Qt.WindowType.WindowCloseButtonHint, True)
         except Exception:
-            self.setWindowFlags(self.windowFlags() | Qt.WindowCloseButtonHint)
+            self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowCloseButtonHint)
 
         self.setStyleSheet("""
             QDialog {
@@ -524,6 +528,13 @@ class CDETDialog(QDialog):
                 border-radius: 5px;
                 padding: 3px 6px;
                 min-width: 0px;
+            }
+            QPushButton#schemeAddBtn, QPushButton#schemeViewBtn, QPushButton#schemeQuickBtn,
+            QPushButton#schemeManageMainBtn, QPushButton#fieldAddBtn, QPushButton#fieldViewBtn,
+            QPushButton#moveAddBtn, QPushButton#moveViewBtn {
+                padding: 0px 8px;
+                min-height: 0px;
+                max-height: 28px;
             }
             QPushButton#iconToolBtn {
                 background: transparent;
@@ -915,9 +926,16 @@ class CDETDialog(QDialog):
             }
             QPushButton#executeBtn,
             QPushButton#refreshBtn,
-            QPushButton#bottomClearBtn,
-            QPushButton#bottomCloseBtn,
             QPushButton#modeToggleBtn {
+                font-size: 13px;
+                font-weight: bold;
+                min-height: 50px;
+                max-height: 50px;
+                padding: 0px 6px;
+                border-radius: 6px;
+            }
+            QPushButton#bottomClearBtn,
+            QPushButton#bottomCloseBtn {
                 font-size: 13px;
                 font-weight: bold;
                 min-height: 28px;
@@ -974,7 +992,7 @@ class CDETDialog(QDialog):
                 font-size: 11px;
                 border: 1px solid #ced4da;
                 border-radius: 4px;
-                padding: 4px 8px;
+                padding: 1px 6px;
                 background-color: #ffffff;
                 min-width: 64px;
             }
@@ -988,7 +1006,7 @@ class CDETDialog(QDialog):
         outer_vertical.setSpacing(0)
         columns_panel = QWidget()
         columns_panel.setMinimumWidth(480)
-        columns_panel.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        columns_panel.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         columns_layout = QHBoxLayout(columns_panel)
         self._columns_layout = columns_layout
         columns_layout.setContentsMargins(0, 0, 0, 0)
@@ -1012,9 +1030,9 @@ class CDETDialog(QDialog):
         )
         self.target_layer_list = QListWidget()
         self.target_layer_list.setObjectName('layerColumnList')
-        self.target_layer_list.setSelectionMode(QAbstractItemView.MultiSelection)
+        self.target_layer_list.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.target_layer_list.setMinimumHeight(200)
-        self.target_layer_list.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.target_layer_list.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
         self.target_filter_stack = QStackedWidget()
         snap_target_btns = QWidget()
@@ -1054,9 +1072,9 @@ class CDETDialog(QDialog):
 
         self.ref_layer_list = QListWidget()
         self.ref_layer_list.setObjectName('layerColumnList')
-        self.ref_layer_list.setSelectionMode(QAbstractItemView.MultiSelection)
+        self.ref_layer_list.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.ref_layer_list.setMinimumHeight(200)
-        self.ref_layer_list.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.ref_layer_list.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self._cat_delegate = _CategoryMarkDelegate(self)
         self.target_layer_list.setItemDelegate(self._cat_delegate)
         self.ref_layer_list.setItemDelegate(self._cat_delegate)
@@ -1112,7 +1130,7 @@ class CDETDialog(QDialog):
         _ppo.addWidget(self.lbl_polygon_stack_title)
         self.list_polygon_outputs = QListWidget()
         self.list_polygon_outputs.setObjectName('layerColumnList')
-        self.list_polygon_outputs.setSelectionMode(QAbstractItemView.NoSelection)
+        self.list_polygon_outputs.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
         _ppo.addWidget(self.list_polygon_outputs, 1)
         _row_po = QHBoxLayout()
         self.btn_polygon_out_all = QPushButton(self.tr('全选输出'))
@@ -1132,10 +1150,10 @@ class CDETDialog(QDialog):
         )
         self.lbl_snap_ref_title.setWordWrap(False)
         self.lbl_snap_ref_title.setMinimumWidth(0)
-        self.lbl_snap_ref_title.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+        self.lbl_snap_ref_title.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         row_snap_ref_way = self.w_snap_mode_preset.layout()
         self.combo_snap_ref_mode = QComboBox()
-        self.combo_snap_ref_mode.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.combo_snap_ref_mode.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.combo_snap_ref_mode.setMinimumWidth(48)
         self.combo_snap_ref_mode.setMaximumWidth(16777215)
         row_snap_ref_way.addWidget(self.combo_snap_ref_mode, 1)
@@ -1289,7 +1307,7 @@ class CDETDialog(QDialog):
 
         self.frame_left_col = QFrame()
         self.frame_left_col.setObjectName('layerColumnFrame')
-        self.frame_left_col.setFrameShape(QFrame.NoFrame)
+        self.frame_left_col.setFrameShape(QFrame.Shape.NoFrame)
         _fl = QVBoxLayout(self.frame_left_col)
         _fl.setContentsMargins(8, 8, 8, 8)
         _fl.setSpacing(6)
@@ -1299,7 +1317,7 @@ class CDETDialog(QDialog):
 
         self.frame_right_col = QFrame()
         self.frame_right_col.setObjectName('layerColumnFrame')
-        self.frame_right_col.setFrameShape(QFrame.NoFrame)
+        self.frame_right_col.setFrameShape(QFrame.Shape.NoFrame)
         _fr = QVBoxLayout(self.frame_right_col)
         _fr.setContentsMargins(8, 8, 8, 8)
         _fr.setSpacing(6)
@@ -1320,13 +1338,13 @@ class CDETDialog(QDialog):
         options_outer.setSpacing(0)
         self.mid_scroll = QScrollArea()
         self.mid_scroll.setWidgetResizable(True)
-        self.mid_scroll.setFrameShape(QFrame.NoFrame)
-        self.mid_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.mid_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        self.mid_scroll.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.mid_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.mid_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.mid_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.mid_scroll.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         try:
-            self.mid_scroll.setSizeAdjustPolicy(QAbstractScrollArea.AdjustIgnored)
-        except Exception:
+            self.mid_scroll.setSizeAdjustPolicy(QAbstractScrollArea.SizeAdjustPolicy.AdjustIgnored)
+        except Exception:  # nosec B110
             pass
         self.mid_inner = QWidget()
         options_layout = QVBoxLayout(self.mid_inner)
@@ -1343,13 +1361,13 @@ class CDETDialog(QDialog):
         self.spin_tolerance.setMaximum(10000.0)
         self.spin_tolerance.setValue(0.00001)
         self.spin_tolerance.setSingleStep(0.000001)
-        self.spin_tolerance.setButtonSymbols(QAbstractSpinBox.NoButtons)
-        self.spin_tolerance.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        self.spin_tolerance.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
+        self.spin_tolerance.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         self.lbl_unit = QLabel(self.tr('度'))
         self.lbl_meter_hint = QLabel(self.tr('(≈1.11m)'))
         self.lbl_meter_hint.setObjectName('meterHint')
         self.lbl_meter_hint.setWordWrap(True)
-        self.lbl_meter_hint.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self.lbl_meter_hint.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         self.chk_snap = QCheckBox(self.tr('提取已吸附'))
         self.chk_snap.setProperty('msgid', '提取已吸附')
         self._snap_chk_tip_standard = self.tr(
@@ -1363,18 +1381,18 @@ class CDETDialog(QDialog):
         self.combo_field_output = QComboBox()
         self.combo_field_output.addItem(self.tr('直接修改图层'), 'direct')
         self.combo_field_output.addItem(self.tr('生成临时图层'), 'memory')
-        self.combo_field_output.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.combo_field_output.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.combo_field_output.setMinimumWidth(0)
 
         self.lbl_snap_sp = QLabel()
         style_param_label(self.lbl_snap_sp, '空间模式', '空间命名模式')
         self.combo_snap_spatial_mode = QComboBox()
-        self.combo_snap_spatial_mode.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.combo_snap_spatial_mode.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.combo_snap_spatial_mode.setMinimumWidth(0)
         self.combo_snap_spatial_mode.setToolTip(
             self.tr('与字段命名相同：按所选关系判断「是否命中参考」，用于筛选已/未命中要素。'))
         self.combo_snap_scheme = QComboBox()
-        self.combo_snap_scheme.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.combo_snap_scheme.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.combo_snap_scheme.setMinimumWidth(0)
         self.chk_batch_continue = QCheckBox(self.tr('失败继续'))
         self.chk_batch_continue.setProperty('msgid', '失败继续')
@@ -1396,7 +1414,7 @@ class CDETDialog(QDialog):
         lay_tol_cluster = QVBoxLayout(self.w_tol_cluster)
         self.lay_tol_cluster = lay_tol_cluster
         lay_tol_cluster.setContentsMargins(0, 0, 0, 0)
-        lay_tol_cluster.setSpacing(3)
+        lay_tol_cluster.setSpacing(1)
         lay_tol_cluster.addWidget(self.lbl_tol)
         _tol_ctrl = QHBoxLayout()
         _tol_ctrl.setContentsMargins(0, 0, 0, 0)
@@ -1408,7 +1426,7 @@ class CDETDialog(QDialog):
         self.w_out_cluster = QWidget()
         lay_out_cluster = QVBoxLayout(self.w_out_cluster)
         lay_out_cluster.setContentsMargins(0, 0, 0, 0)
-        lay_out_cluster.setSpacing(3)
+        lay_out_cluster.setSpacing(1)
         lay_out_cluster.addWidget(self.lbl_field_output)
         lay_out_cluster.addWidget(self.combo_field_output)
         self.lbl_field_output.setVisible(False)
@@ -1445,7 +1463,7 @@ class CDETDialog(QDialog):
         self.w_snap_ad_right.setVisible(False)
 
         lay_snap_block_main.addWidget(self.w_snap_left_inner, 1)
-        self.w_snap_left_inner.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.w_snap_left_inner.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self._options_group_layout = options_layout
         options_layout.addWidget(self.w_snap_options_block)
 
@@ -1476,7 +1494,7 @@ class CDETDialog(QDialog):
         self.field_options_extra = QWidget()
         field_outer = QVBoxLayout(self.field_options_extra)
         field_outer.setContentsMargins(0, 0, 0, 0)
-        field_outer.setSpacing(8)
+        field_outer.setSpacing(2)
         self.field_grid = QGridLayout()
         self.field_grid.setContentsMargins(0, 0, 0, 0)
         self.field_grid.setHorizontalSpacing(10)
@@ -1487,7 +1505,7 @@ class CDETDialog(QDialog):
         self.combo_multi_match = QComboBox()
         for _cb in (self.combo_named_field, self.combo_ref_field,
                     self.combo_spatial_mode, self.combo_multi_match):
-            _cb.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+            _cb.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.lbl_named_field = QLabel()
         style_param_label(self.lbl_named_field, '命名字段', '被命名字段')
         self.lbl_ref_field = QLabel()
@@ -1497,10 +1515,10 @@ class CDETDialog(QDialog):
         self.lbl_spatial_mode = QLabel()
         style_param_label(self.lbl_spatial_mode, '空间模式', '空间命名模式')
         self.row_field_mode_param = ModeParamRow(on_changed=self._on_mode_param_changed)
-        self.w_named_field_block = param_block(self.lbl_named_field, self.combo_named_field)
-        self.w_ref_field_block = param_block(self.lbl_ref_field, self.combo_ref_field)
-        self.w_multi_match_block = param_block(self.lbl_multi_match, self.combo_multi_match)
-        self.w_spatial_mode_block = param_block(self.lbl_spatial_mode, self.combo_spatial_mode)
+        self.w_named_field_block = param_block(self.lbl_named_field, self.combo_named_field, spacing=1)
+        self.w_ref_field_block = param_block(self.lbl_ref_field, self.combo_ref_field, spacing=1)
+        self.w_multi_match_block = param_block(self.lbl_multi_match, self.combo_multi_match, spacing=1)
+        self.w_spatial_mode_block = param_block(self.lbl_spatial_mode, self.combo_spatial_mode, spacing=1)
         field_outer.addWidget(self.w_named_field_block)
         field_outer.addWidget(self.w_ref_field_block)
         field_outer.addWidget(self.w_multi_match_block)
@@ -1518,7 +1536,7 @@ class CDETDialog(QDialog):
         self.combo_tail_ref = QComboBox()
         self.combo_tail_named = QComboBox()
         for _cb in (self.combo_head_ref, self.combo_head_named, self.combo_tail_ref, self.combo_tail_named):
-            _cb.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+            _cb.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.lbl_head_ref = QLabel()
         style_param_label(self.lbl_head_ref, '头点字段', '头点字段')
         self.lbl_head_named = QLabel()
@@ -1534,11 +1552,11 @@ class CDETDialog(QDialog):
         self.w_end_fields.setVisible(False)
         field_outer.addWidget(self.w_end_fields)
         self.combo_field_scheme = QComboBox()
-        self.combo_field_scheme.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.combo_field_scheme.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.combo_field_scheme.setMinimumWidth(0)
         self.lbl_field_scheme = QLabel()
         style_param_label(self.lbl_field_scheme, '批量方案', '批量方案')
-        self.w_field_batch_block = param_block(self.lbl_field_scheme, self.combo_field_scheme)
+        self.w_field_batch_block = param_block(self.lbl_field_scheme, self.combo_field_scheme, spacing=1)
         field_outer.addWidget(self.w_field_batch_block)
         self.w_field_mid_bottom_pad = self._make_edge_pad('field_mid_bottom_pad')
         field_outer.addWidget(self.w_field_mid_bottom_pad)
@@ -1577,7 +1595,7 @@ class CDETDialog(QDialog):
 
         self.lbl_move_mode = QLabel(self.tr('移动模式'))
         self.combo_move_mode = QComboBox()
-        self.combo_move_mode.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.combo_move_mode.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.combo_move_mode.setMinimumWidth(0)
         self.combo_move_mode.setMaxVisibleItems(22)
         self.lbl_move_pair = QLabel(self.tr(
@@ -1590,7 +1608,7 @@ class CDETDialog(QDialog):
 
         self.lbl_move_batch_scheme = QLabel(self.tr('批量方案'))
         self.combo_move_scheme = QComboBox()
-        self.combo_move_scheme.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.combo_move_scheme.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.combo_move_scheme.setMinimumWidth(0)
         self.chk_move_batch_continue = QCheckBox(self.tr('失败继续'))
         self.chk_move_batch_continue.setChecked(True)
@@ -1630,7 +1648,7 @@ class CDETDialog(QDialog):
         _lay_move_block.setContentsMargins(0, 0, 0, 0)
         _lay_move_block.setSpacing(6)
         _lay_move_block.addWidget(self.w_move_left_inner)
-        self.w_move_left_inner.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.w_move_left_inner.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         _move_outer.addWidget(self.w_move_options_block)
 
         self.btn_move_scheme_manage = QPushButton()
@@ -1689,14 +1707,14 @@ class CDETDialog(QDialog):
 
         def _boxed_frame():
             fr = QFrame()
-            fr.setFrameShape(QFrame.StyledPanel)
-            fr.setFrameShadow(QFrame.Plain)
+            fr.setFrameShape(QFrame.Shape.StyledPanel)
+            fr.setFrameShadow(QFrame.Shadow.Plain)
             fr.setLineWidth(1)
-            fr.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
+            fr.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
             return fr
 
         self.right_col = QWidget()
-        self.right_col.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.right_col.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.right_col.setMinimumWidth(0)
         right_lay = QVBoxLayout(self.right_col)
         right_lay.setContentsMargins(8, 4, 8, 8)
@@ -1722,7 +1740,7 @@ class CDETDialog(QDialog):
         self.btn_move_scheme_import.setVisible(False)
         self.btn_move_scheme_export.setVisible(False)
 
-        self.options_group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.options_group.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         options_outer.addWidget(self.mid_scroll)
 
         self.right_bottom_frame = _boxed_frame()
@@ -1737,8 +1755,8 @@ class CDETDialog(QDialog):
         bottom_row2.addWidget(self.btn_confirm, 1)
         bottom_outer.addLayout(bottom_row2)
 
-        self.right_top_frame.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        self.right_bottom_frame.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.right_top_frame.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.right_bottom_frame.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.mid_scroll.setMinimumHeight(64)
         right_lay.addWidget(self.right_top_frame, 0)
         right_lay.addWidget(self.options_group, 1)
@@ -1753,18 +1771,23 @@ class CDETDialog(QDialog):
         self._update_line_rule_label()
         try:
             guard_all_combos(self)
-        except Exception:
+        except Exception:  # nosec B110
             pass
+
+    def _action_btn_height(self, btn):
+        if btn.objectName() in ('executeBtn', 'refreshBtn', 'modeToggleBtn'):
+            return BOTTOM_BTN_H
+        return ACTION_BTN_H
 
     def _style_action_btn(self, btn, short_src, tip_src):
         btn.setText(self.tr(short_src))
         btn.setToolTip(self.tr(tip_src))
         btn.setProperty('msgid', short_src)
         btn.setProperty('tip', tip_src)
-        btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         btn.setMinimumWidth(0)
-        btn.setFixedHeight(ACTION_BTN_H)
-        btn.setCursor(Qt.PointingHandCursor)
+        btn.setFixedHeight(self._action_btn_height(btn))
+        btn.setCursor(Qt.CursorShape.PointingHandCursor)
 
     def _fill_mid_action_grid(self, host, row1, row2, span_row2=False):
         lay = QGridLayout(host)
@@ -1780,7 +1803,7 @@ class CDETDialog(QDialog):
         else:
             for col, btn in enumerate(row2):
                 lay.addWidget(btn, 1, col)
-        host.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        host.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
     def _fill_mid_action_column(self, host, buttons):
         lay = QVBoxLayout(host)
@@ -1789,7 +1812,7 @@ class CDETDialog(QDialog):
         for btn in buttons:
             if btn is not None:
                 lay.addWidget(btn)
-        host.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        host.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
     def _iter_filter_buttons(self):
         names = (
@@ -1814,7 +1837,7 @@ class CDETDialog(QDialog):
         name = self._filter_button_name_tip(btn)
         try:
             btn.setText(name)
-        except Exception:
+        except Exception:  # nosec B110
             pass
         if extra:
             btn.setToolTip(name + ('\n' + extra if name else extra))
@@ -1859,11 +1882,11 @@ class CDETDialog(QDialog):
         self._sync_field_filter_checked()
 
     def _geom_filter_key(self, geom):
-        if geom == QgsWkbTypes.PointGeometry:
+        if geom == QgsWkbTypes.GeometryType.PointGeometry:
             return 'point'
-        if geom == QgsWkbTypes.LineGeometry:
+        if geom == QgsWkbTypes.GeometryType.LineGeometry:
             return 'line'
-        if geom == QgsWkbTypes.PolygonGeometry:
+        if geom == QgsWkbTypes.GeometryType.PolygonGeometry:
             return 'polygon'
         return 'all'
 
@@ -1936,7 +1959,7 @@ class CDETDialog(QDialog):
         pad = QWidget()
         pad.setObjectName(name)
         pad.setFixedHeight(int(height))
-        pad.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
+        pad.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         pad.setProperty('mid_edge_pad', True)
         return pad
 
@@ -1950,7 +1973,7 @@ class CDETDialog(QDialog):
         gap = QWidget()
         gap.setProperty('mid_gap', True)
         gap.setFixedHeight(max(0, int(height)))
-        gap.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
+        gap.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         return gap
 
     def _strip_mid_gaps(self, layout):
@@ -2232,8 +2255,8 @@ class CDETDialog(QDialog):
         if self._is_edge_pad_widget(widget) or self._is_mid_gap_widget(widget):
             return
         policy = widget.sizePolicy()
-        policy.setHorizontalPolicy(QSizePolicy.Expanding)
-        policy.setVerticalPolicy(QSizePolicy.Minimum)
+        policy.setHorizontalPolicy(QSizePolicy.Policy.Expanding)
+        policy.setVerticalPolicy(QSizePolicy.Policy.Minimum)
         widget.setSizePolicy(policy)
         widget.setMinimumHeight(0)
         widget.setMaximumHeight(16777215)
@@ -2255,9 +2278,10 @@ class CDETDialog(QDialog):
             layout.addWidget(widget)
             self._lock_mid_group_policy(widget)
         top, bottom = self._current_edge_pads()
+        pad_h = 0 if getattr(self, '_ui_mode', None) == 'field' else 8
         for pad in (top, bottom):
             if pad is not None:
-                pad.setFixedHeight(8)
+                pad.setFixedHeight(pad_h)
                 pad.setVisible(True)
         row_host = getattr(self, 'w_tol_row', None)
         if row_host is not None:
@@ -2322,7 +2346,12 @@ class CDETDialog(QDialog):
             if widget in groups:
                 seen += 1
             want.append(('w', id(widget)))
-        if sig != want:
+        # Field naming keeps a single trailing stretch, so leftover height sits
+        # under 批量方案 instead of opening gaps between the fields above it.
+        if getattr(self, '_ui_mode', None) == 'field':
+            self._strip_mid_gaps(layout)
+            layout.addStretch(1)
+        elif sig != want:
             self._strip_mid_gaps(layout)
             positions = []
             for i in range(layout.count()):
@@ -2332,12 +2361,20 @@ class CDETDialog(QDialog):
                     positions.append(i)
             for idx in positions[1:][::-1]:
                 layout.insertStretch(idx, 1)
+        pad_h = 0 if getattr(self, '_ui_mode', None) == 'field' else 8
         for pad in (top, bottom):
             if pad is not None:
-                pad.setFixedHeight(8)
+                pad.setFixedHeight(pad_h)
                 pad.setVisible(True)
         for widget in groups:
             self._lock_mid_group_policy(widget)
+        if getattr(self, '_ui_mode', None) == 'field':
+            for widget in groups:
+                policy = widget.sizePolicy()
+                policy.setVerticalPolicy(QSizePolicy.Policy.Maximum)
+                widget.setSizePolicy(policy)
+                widget.setMinimumHeight(0)
+                widget.setMaximumHeight(16777215)
 
     def _mode_param_groups(self, mode):
         """Widgets that form mid parameter groups for a mode (for min-height)."""
@@ -2382,7 +2419,7 @@ class CDETDialog(QDialog):
                     getattr(self, 'w_end_fields', None),
                 ):
                     continue
-            except Exception:
+            except Exception:  # nosec B110
                 pass
             out.append(widget)
         return out
@@ -2448,7 +2485,7 @@ class CDETDialog(QDialog):
                 is_grow = widget is grow
                 ol.setStretch(i, 1 if is_grow else 0)
                 if is_grow:
-                    widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+                    widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         if mode == 'move':
             move_extra = getattr(self, 'move_options_extra', None)
             if move_extra is not None and move_extra.layout() is not None:
@@ -2511,7 +2548,7 @@ class CDETDialog(QDialog):
         if title is not None:
             title.setWordWrap(False)
             title.setMinimumWidth(0)
-            title.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+            title.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
 
     def _settle_main_layout(self):
         """Settle 5:2 / 1:1 column stretches against the real width after the widget is shown.
@@ -2539,7 +2576,7 @@ class CDETDialog(QDialog):
             try:
                 gl.setColumnMinimumWidth(0, 0)
                 gl.setColumnMinimumWidth(1, 0)
-            except Exception:
+            except Exception:  # nosec B110
                 pass
             gl.invalidate()
         cl = getattr(self, '_columns_layout', None)
@@ -2612,32 +2649,32 @@ class CDETDialog(QDialog):
     def _refill_translated_combos(self):
         try:
             self._refresh_snap_spatial_combo()
-        except Exception:
+        except Exception:  # nosec B110
             pass
         try:
             self._refresh_field_combos()
-        except Exception:
+        except Exception:  # nosec B110
             pass
         try:
             self._init_multi_combo()
-        except Exception:
+        except Exception:  # nosec B110
             pass
         try:
             self._refresh_move_mode_combo()
-        except Exception:
+        except Exception:  # nosec B110
             pass
         try:
             self._retranslate_snap_ref_mode_combo()
-        except Exception:
+        except Exception:  # nosec B110
             pass
         try:
             self._refresh_output_combo()
-        except Exception:
+        except Exception:  # nosec B110
             pass
         for _fn in ('_refresh_snap_scheme_combo', '_refresh_field_scheme_combo', '_refresh_move_scheme_combo'):
             try:
                 getattr(self, _fn)()
-            except Exception:
+            except Exception:  # nosec B110
                 pass
         self._stamp_static_combo_sources()
         try:
@@ -2645,17 +2682,17 @@ class CDETDialog(QDialog):
                 self.row_snap_mode_param.set_mode(self.combo_snap_spatial_mode.currentData())
             if hasattr(self, 'row_field_mode_param') and hasattr(self, 'combo_spatial_mode'):
                 self.row_field_mode_param.set_mode(self.combo_spatial_mode.currentData())
-        except Exception:
+        except Exception:  # nosec B110
             pass
 
     def closeEvent(self, event):
         try:
             self._persist_settings()
-        except Exception:
+        except Exception:  # nosec B110
             pass
         try:
             remove_move_preview_layers(self.project)
-        except Exception:
+        except Exception:  # nosec B110
             pass
         super().closeEvent(event)
 
@@ -2768,15 +2805,6 @@ class CDETDialog(QDialog):
             data = {}
         return normalize_category_map(data)
 
-    def _click_has_multiselect_modifier(self, event):
-        mods = event.modifiers() if hasattr(event, 'modifiers') else Qt.NoModifier
-        ctrl = getattr(Qt, 'ControlModifier', None) or getattr(getattr(Qt, 'KeyboardModifier', None), 'ControlModifier', 0)
-        shift = getattr(Qt, 'ShiftModifier', None) or getattr(getattr(Qt, 'KeyboardModifier', None), 'ShiftModifier', 0)
-        try:
-            return bool(mods & (ctrl | shift))
-        except Exception:
-            return False
-
     def _category_mark_hit(self, lw, item, pos):
         if lw is None or item is None or pos is None:
             return False
@@ -2796,106 +2824,42 @@ class CDETDialog(QDialog):
                 return lw
         return None
 
-    def _layer_rubber(self, lw):
-        band = getattr(lw, '_sel_rubber', None)
-        if band is None:
-            shape = getattr(QRubberBand, 'Rectangle', None)
-            if shape is None:
-                shape = QRubberBand.Shape.Rectangle
-            band = QRubberBand(shape, lw.viewport())
-            lw._sel_rubber = band
-        return band
-
-    def _end_layer_press(self, lw, toggle_item):
-        st = getattr(self, '_layer_press', None)
-        self._layer_press = None
-        try:
-            lw.viewport().releaseMouse()
-        except Exception:
-            pass
-        band = getattr(lw, '_sel_rubber', None)
-        if band is not None:
-            band.hide()
-        if not st or st.get('lw') is not lw:
-            return
-        if st.get('drag'):
-            rect = QRect(st['origin'], st.get('pos') or st['origin']).normalized()
-            lw.blockSignals(True)
-            changed = False
-            for i in range(lw.count()):
-                it = lw.item(i)
-                if it is not None and lw.visualItemRect(it).intersects(rect) and not it.isSelected():
-                    it.setSelected(True)
-                    changed = True
-            lw.blockSignals(False)
-            if changed:
-                self._on_layer_selection_changed()
-            return
-        item = st.get('item')
-        if toggle_item and item is not None:
-            item.setSelected(not item.isSelected())
-            if item.isSelected():
-                lw.setCurrentItem(item)
-
     def eventFilter(self, watched, event):
+        # ExtendedSelection, same as the local plugin: no modifier selects only
+        # that row and does not clear it on a second click; Ctrl toggles one
+        # row; Shift selects a range; a drag selects the rows crossed.
+        # Empty space is swallowed so it does not clear. The category mark
+        # opens the picker and leaves the current selection as it is.
         lw = self._layer_list_of(watched)
         if lw is None:
             return super().eventFilter(watched, event)
         et = event.type()
+        if et not in (QEvent.Type.MouseButtonPress, QEvent.Type.MouseButtonRelease, QEvent.Type.MouseButtonDblClick):
+            return super().eventFilter(watched, event)
         left = getattr(Qt, 'LeftButton', None)
-        if et == QEvent.MouseMove:
-            st = getattr(self, '_layer_press', None)
-            if not st or st.get('lw') is not lw:
-                return super().eventFilter(watched, event)
-            pos = pointer_pos(event)
-            st['pos'] = QPoint(pos)
-            if (pos - st['origin']).manhattanLength() >= 6:
-                st['drag'] = True
-                rect = QRect(st['origin'], pos).normalized()
-                band = self._layer_rubber(lw)
-                band.setGeometry(rect)
-                band.show()
-            return True
-        if et not in (QEvent.MouseButtonPress, QEvent.MouseButtonRelease, QEvent.MouseButtonDblClick):
+        if event.button() != left:
             return super().eventFilter(watched, event)
         pos = pointer_pos(event)
         item = lw.itemAt(pos)
-        if et == QEvent.MouseButtonDblClick:
-            self._layer_skip_release = True
-            return True
-        if et == QEvent.MouseButtonPress and event.button() == left:
-            if (
-                item is not None
-                and item.data(ROLE_HAS_CATS)
-                and self._category_mark_hit(lw, item, pos)
-                and not self._click_has_multiselect_modifier(event)
-            ):
-                lw.blockSignals(True)
-                lw.clearSelection()
-                item.setSelected(True)
-                lw.setCurrentItem(item)
-                lw.blockSignals(False)
+        blank = getattr(self, '_layer_blank_press', None)
+        if item is None:
+            # A drag that starts on a row and ends on empty space must still
+            # reach the list, so only a press that itself began on empty space
+            # is swallowed. That is what would otherwise clear the selection.
+            if et == QEvent.Type.MouseButtonPress:
+                self._layer_blank_press = lw
+                return True
+            if et == QEvent.Type.MouseButtonDblClick:
+                return True
+            if et == QEvent.Type.MouseButtonRelease and blank is lw:
+                self._layer_blank_press = None
+                return True
+            return super().eventFilter(watched, event)
+        if et == QEvent.Type.MouseButtonPress:
+            self._layer_blank_press = None
+            if item.data(ROLE_HAS_CATS) and self._category_mark_hit(lw, item, pos):
                 self._pick_item_categories(lw, item)
                 return True
-            self._layer_press = {
-                'lw': lw,
-                'origin': QPoint(pos),
-                'pos': QPoint(pos),
-                'item': item,
-                'drag': False,
-            }
-            try:
-                lw.viewport().grabMouse()
-            except Exception:
-                pass
-            return True
-        if et == QEvent.MouseButtonRelease and event.button() == left:
-            skip = bool(getattr(self, '_layer_skip_release', False))
-            self._layer_skip_release = False
-            self._end_layer_press(lw, toggle_item=not skip)
-            return True
-        if item is None:
-            return True
         return super().eventFilter(watched, event)
 
     def _optional_layer_total(self, layer):
@@ -2980,7 +2944,7 @@ class CDETDialog(QDialog):
         box_lay.addStretch(1)
         scroll.setWidget(host)
         lay.addWidget(scroll, 1)
-        bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        bb = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         localize_button_box(bb)
         bb.accepted.connect(dlg.accept)
         bb.rejected.connect(dlg.reject)
@@ -2992,7 +2956,7 @@ class CDETDialog(QDialog):
             result = run_dialog(dlg)
         finally:
             self._open_cat_session = None
-        if result != QDialog.Accepted:
+        if result != QDialog.DialogCode.Accepted:
             return
         picked = []
         for cb in boxes:
@@ -3186,7 +3150,7 @@ class CDETDialog(QDialog):
             self._cat_field['ref'] = normalize_category_map(data.get('ref_categories'))
             try:
                 self.spin_tolerance.setValue(float(data.get('tolerance', self.spin_tolerance.value())))
-            except Exception:
+            except Exception:  # nosec B110
                 pass
             fo = data.get('field_output_mode') or 'direct'
             fidx = self.combo_field_output.findData(fo)
@@ -3276,16 +3240,16 @@ class CDETDialog(QDialog):
         dlg.setWindowTitle(self.tr('加入到命名方案'))
         lay = QVBoxLayout(dlg)
         lw = QListWidget()
-        lw.setSelectionMode(QAbstractItemView.MultiSelection)
+        lw.setSelectionMode(QAbstractItemView.SelectionMode.MultiSelection)
         for name in names:
             lw.addItem(name)
         lay.addWidget(lw)
-        bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        bb = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         localize_button_box(bb)
         bb.accepted.connect(dlg.accept)
         bb.rejected.connect(dlg.reject)
         lay.addWidget(bb)
-        if run_dialog(dlg) != QDialog.Accepted:
+        if run_dialog(dlg) != QDialog.DialogCode.Accepted:
             return []
         return [i.text() for i in lw.selectedItems()]
 
@@ -3345,7 +3309,7 @@ class CDETDialog(QDialog):
         dlg.resize(760, 460)
         lay = QVBoxLayout(dlg)
         lw = QListWidget()
-        lw.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        lw.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         lay.addWidget(lw, 1)
 
         def _fill(focus=None):
@@ -3353,7 +3317,7 @@ class CDETDialog(QDialog):
             arr = self._field_schemes.get(name) or []
             for i, task in enumerate(arr):
                 it = QListWidgetItem(self._field_task_display_text(i + 1, task))
-                it.setData(Qt.UserRole, i)
+                it.setData(Qt.ItemDataRole.UserRole, i)
                 missing = []
                 for layer_name in (task.get('target_names') or []) + (task.get('ref_names') or []):
                     if layer_name and not self.project.mapLayersByName(layer_name):
@@ -3369,7 +3333,7 @@ class CDETDialog(QDialog):
         def _selected_indexes():
             idxs = []
             for it in lw.selectedItems():
-                val = it.data(Qt.UserRole)
+                val = it.data(Qt.ItemDataRole.UserRole)
                 if isinstance(val, int):
                     idxs.append(val)
             return sorted(set(idxs))
@@ -3416,9 +3380,9 @@ class CDETDialog(QDialog):
             reply = QMessageBox.question(
                 dlg, self.tr('删除子任务'),
                 self.tr('确定删除选中的 {0} 条子任务吗？').format(len(idxs)),
-                QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No,
             )
-            if reply != QMessageBox.Yes:
+            if reply != QMessageBox.StandardButton.Yes:
                 return
             arr = self._field_schemes.get(name) or []
             for i in reversed(idxs):
@@ -3468,7 +3432,7 @@ class CDETDialog(QDialog):
         tol = QDoubleSpinBox()
         tol.setDecimals(6)
         tol.setRange(0.000001, 10000.0)
-        tol.setButtonSymbols(QAbstractSpinBox.NoButtons)
+        tol.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
         tol.setMinimumWidth(132)
         try:
             tol.setValue(float(task.get('tolerance') or 0.00001))
@@ -3488,7 +3452,7 @@ class CDETDialog(QDialog):
         if t_layers and r_layers:
             for entry in spatial_mode_choices(t_layers[0], r_layers[0]):
                 mode.addItem(entry[1], entry[0])
-                mode.setItemData(mode.count() - 1, entry[2], Qt.ToolTipRole)
+                mode.setItemData(mode.count() - 1, entry[2], Qt.ItemDataRole.ToolTipRole)
         if stored_mode and mode.findData(stored_mode) < 0:
             mode.addItem(spatial_mode_label(stored_mode), stored_mode)
         midx = mode.findData(stored_mode)
@@ -3499,7 +3463,7 @@ class CDETDialog(QDialog):
         multi = QComboBox()
         for code, label in multi_match_choices():
             multi.addItem(label, code)
-            multi.setItemData(multi.count() - 1, multi_match_tip(code), Qt.ToolTipRole)
+            multi.setItemData(multi.count() - 1, multi_match_tip(code), Qt.ItemDataRole.ToolTipRole)
         multi.setToolTip(_i18n_tr(MULTI_MATCH_COMMON_TIP))
         mm = task.get('multi_strategy') or 'nearest'
         mmidx = multi.findData(mm)
@@ -3572,7 +3536,7 @@ class CDETDialog(QDialog):
         box_r, list_r = _name_box(self.tr('参考图层'), task.get('ref_names'))
         lay.addWidget(box_t)
         lay.addWidget(box_r)
-        bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        bb = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         localize_button_box(bb)
         lay.addWidget(bb)
 
@@ -3609,7 +3573,7 @@ class CDETDialog(QDialog):
 
         bb.accepted.connect(_accept)
         bb.rejected.connect(dlg.reject)
-        if run_dialog(dlg) != QDialog.Accepted:
+        if run_dialog(dlg) != QDialog.DialogCode.Accepted:
             return None
         return dlg.property('task')
 
@@ -3693,10 +3657,10 @@ class CDETDialog(QDialog):
             self,
             self.tr('删除方案'),
             self.tr('确定删除命名方案「{0}」吗？').format(name),
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
         )
-        if reply != QMessageBox.Yes:
+        if reply != QMessageBox.StandardButton.Yes:
             return
         self._field_schemes.pop(name, None)
         self._active_field_scheme = self.FIELD_SCHEME_CUSTOM
@@ -3811,38 +3775,38 @@ class CDETDialog(QDialog):
     def bind_signals(self):
         self.btn_help.clicked.connect(self._show_help)
         self.target_btn_point.clicked.connect(
-            lambda: self._load_layers_to_list(self.target_layer_list, QgsWkbTypes.PointGeometry))
+            lambda: self._load_layers_to_list(self.target_layer_list, QgsWkbTypes.GeometryType.PointGeometry))
         self.target_btn_line.clicked.connect(
-            lambda: self._load_layers_to_list(self.target_layer_list, QgsWkbTypes.LineGeometry))
+            lambda: self._load_layers_to_list(self.target_layer_list, QgsWkbTypes.GeometryType.LineGeometry))
         self.target_btn_polygon.clicked.connect(
-            lambda: self._load_layers_to_list(self.target_layer_list, QgsWkbTypes.PolygonGeometry))
+            lambda: self._load_layers_to_list(self.target_layer_list, QgsWkbTypes.GeometryType.PolygonGeometry))
         self.target_btn_all.clicked.connect(
             lambda: self._load_layers_to_list(self.target_layer_list, None))
 
         self.field_tgt_btn_point.clicked.connect(
-            lambda: self._set_field_geom_filter('target', QgsWkbTypes.PointGeometry))
+            lambda: self._set_field_geom_filter('target', QgsWkbTypes.GeometryType.PointGeometry))
         self.field_tgt_btn_line.clicked.connect(
-            lambda: self._set_field_geom_filter('target', QgsWkbTypes.LineGeometry))
+            lambda: self._set_field_geom_filter('target', QgsWkbTypes.GeometryType.LineGeometry))
         self.field_tgt_btn_polygon.clicked.connect(
-            lambda: self._set_field_geom_filter('target', QgsWkbTypes.PolygonGeometry))
+            lambda: self._set_field_geom_filter('target', QgsWkbTypes.GeometryType.PolygonGeometry))
         self.field_tgt_btn_group.clicked.connect(
             lambda: self._open_layer_group_menu('target'))
 
         self.field_ref_btn_point.clicked.connect(
-            lambda: self._set_field_geom_filter('ref', QgsWkbTypes.PointGeometry))
+            lambda: self._set_field_geom_filter('ref', QgsWkbTypes.GeometryType.PointGeometry))
         self.field_ref_btn_line.clicked.connect(
-            lambda: self._set_field_geom_filter('ref', QgsWkbTypes.LineGeometry))
+            lambda: self._set_field_geom_filter('ref', QgsWkbTypes.GeometryType.LineGeometry))
         self.field_ref_btn_polygon.clicked.connect(
-            lambda: self._set_field_geom_filter('ref', QgsWkbTypes.PolygonGeometry))
+            lambda: self._set_field_geom_filter('ref', QgsWkbTypes.GeometryType.PolygonGeometry))
         self.field_ref_btn_group.clicked.connect(
             lambda: self._open_layer_group_menu('ref'))
 
         self.ref_btn_point.clicked.connect(
-            lambda: self._load_layers_to_list(self.ref_layer_list, QgsWkbTypes.PointGeometry))
+            lambda: self._load_layers_to_list(self.ref_layer_list, QgsWkbTypes.GeometryType.PointGeometry))
         self.ref_btn_line.clicked.connect(
-            lambda: self._load_layers_to_list(self.ref_layer_list, QgsWkbTypes.LineGeometry))
+            lambda: self._load_layers_to_list(self.ref_layer_list, QgsWkbTypes.GeometryType.LineGeometry))
         self.ref_btn_polygon.clicked.connect(
-            lambda: self._load_layers_to_list(self.ref_layer_list, QgsWkbTypes.PolygonGeometry))
+            lambda: self._load_layers_to_list(self.ref_layer_list, QgsWkbTypes.GeometryType.PolygonGeometry))
         self.ref_btn_all.clicked.connect(
             lambda: self._load_layers_to_list(self.ref_layer_list, None))
 
@@ -3905,7 +3869,7 @@ class CDETDialog(QDialog):
             if idx < 0:
                 combo.setToolTip(base)
                 continue
-            tip = combo.itemData(idx, Qt.ToolTipRole) or ''
+            tip = combo.itemData(idx, Qt.ItemDataRole.ToolTipRole) or ''
             combo.setToolTip('{0}\n\n{1}{2}\n{3}'.format(base, self.tr('当前：'), combo.currentText(), tip).rstrip())
         self._sync_mode_param_widgets()
 
@@ -3993,24 +3957,24 @@ class CDETDialog(QDialog):
         }
         for code, label in items:
             it = QListWidgetItem(label)
-            it.setFlags(it.flags() | Qt.ItemIsUserCheckable | Qt.ItemIsEnabled)
-            it.setData(Qt.UserRole, code)
+            it.setFlags(it.flags() | Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsEnabled)
+            it.setData(Qt.ItemDataRole.UserRole, code)
             it.setToolTip(tips.get(code, ''))
-            it.setCheckState(Qt.Checked if code in default_on else Qt.Unchecked)
+            it.setCheckState(Qt.CheckState.Checked if code in default_on else Qt.CheckState.Unchecked)
             self.list_polygon_outputs.addItem(it)
 
     def _polygon_outputs_selected(self):
         codes = []
         for row in range(self.list_polygon_outputs.count()):
             it = self.list_polygon_outputs.item(row)
-            if it.checkState() == Qt.Checked:
-                c = it.data(Qt.UserRole)
+            if it.checkState() == Qt.CheckState.Checked:
+                c = it.data(Qt.ItemDataRole.UserRole)
                 if c:
                     codes.append(c)
         return codes
 
     def _set_all_polygon_outputs(self, checked):
-        st = Qt.Checked if checked else Qt.Unchecked
+        st = Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked
         for row in range(self.list_polygon_outputs.count()):
             self.list_polygon_outputs.item(row).setCheckState(st)
 
@@ -4018,12 +3982,12 @@ class CDETDialog(QDialog):
         want = frozenset(expand_polygon_output_codes_for_tasks(codes))
         for row in range(self.list_polygon_outputs.count()):
             it = self.list_polygon_outputs.item(row)
-            code = it.data(Qt.UserRole)
+            code = it.data(Qt.ItemDataRole.UserRole)
             if code:
-                it.setCheckState(Qt.Checked if code in want else Qt.Unchecked)
+                it.setCheckState(Qt.CheckState.Checked if code in want else Qt.CheckState.Unchecked)
 
-    def _snap_target_geom_uniform(self):
-        layers = self._get_selected_layers(self.target_layer_list)
+    def _selected_geom_uniform(self, list_widget):
+        layers = self._get_selected_layers(list_widget)
         if not layers:
             return None
         ks = {_layer_geom_class(lyr) for lyr in layers}
@@ -4032,12 +3996,15 @@ class CDETDialog(QDialog):
             return None
         return ks.pop()
 
+    def _snap_target_geom_uniform(self):
+        return self._selected_geom_uniform(self.target_layer_list)
+
     def _overlap_kind_auto(self):
         g = self._snap_target_geom_uniform()
         mp = {
-            QgsWkbTypes.PointGeometry: 'point',
-            QgsWkbTypes.LineGeometry: 'line',
-            QgsWkbTypes.PolygonGeometry: 'polygon',
+            QgsWkbTypes.GeometryType.PointGeometry: 'point',
+            QgsWkbTypes.GeometryType.LineGeometry: 'line',
+            QgsWkbTypes.GeometryType.PolygonGeometry: 'polygon',
         }
         return mp.get(g)
 
@@ -4060,25 +4027,29 @@ class CDETDialog(QDialog):
     @staticmethod
     def _special_ref_wkb(sp_key):
         return {
-            'point': QgsWkbTypes.PointGeometry,
-            'line': QgsWkbTypes.LineGeometry,
-            'polygon': QgsWkbTypes.PolygonGeometry,
+            'point': QgsWkbTypes.GeometryType.PointGeometry,
+            'line': QgsWkbTypes.GeometryType.LineGeometry,
+            'polygon': QgsWkbTypes.GeometryType.PolygonGeometry,
         }.get(SPECIAL_REF_GEOM.get(sp_key))
 
     def _special_entries_for_geom(self, geo):
-        """判断图层几何统一时列出该类型可用的特殊检测；混合类型只列三种几何都支持的。
+        """按判断图层列出特殊检测，顺序与 SPECIAL_MODE_INFO 一致。
 
-        顺序与 SPECIAL_MODE_INFO / special_modes_for_geom 一致，不得按分类重排。
+        判断侧类型统一时只列该类型；混选或未选时只列三种几何都支持的。
+        参考图层不参与这份列表：需要参考几何的检查仍然出现，选中之后再去限定参考列表。
         """
         names = {
-            QgsWkbTypes.PointGeometry: 'point',
-            QgsWkbTypes.LineGeometry: 'line',
-            QgsWkbTypes.PolygonGeometry: 'polygon',
+            QgsWkbTypes.GeometryType.PointGeometry: 'point',
+            QgsWkbTypes.GeometryType.LineGeometry: 'line',
+            QgsWkbTypes.GeometryType.PolygonGeometry: 'polygon',
         }
         if geo in names:
             keys = special_modes_for_geom(names[geo])
         else:
-            keys = [k for k in special_modes_for_geom('point') if len(SPECIAL_TARGET_GEOMS.get(k, ())) == 3]
+            keys = [
+                k for k in special_modes_for_geom('point')
+                if len(SPECIAL_TARGET_GEOMS.get(k, ())) == 3
+            ]
         return [(k, special_mode_label(k), special_mode_tip(k)) for k in keys]
 
     def _refresh_snap_ref_layer_list(self):
@@ -4161,12 +4132,32 @@ class CDETDialog(QDialog):
             combo.blockSignals(False)
         self._sync_combo_tips()
 
+    def _sync_ref_list_participation(self, use_ref):
+        """参考图层只在标准模式、以及需要参考几何的特殊检测里参与。
+
+        不需要参考图层时清掉已有选择，并禁用列表和点/线/面/全部按钮。
+        回到需要参考的模式时重新启用，不把刚才清掉的选择补回来。
+        """
+        lw = self.ref_layer_list
+        if not use_ref and (lw.selectedItems() or lw.currentItem() is not None):
+            lw.blockSignals(True)
+            lw.clearSelection()
+            lw.setCurrentRow(-1)
+            lw.blockSignals(False)
+        lw.setEnabled(bool(use_ref))
+        self.ref_filter_stack.setEnabled(bool(use_ref))
+        self._paint_ref_list_enabled(bool(use_ref))
+
+    def _paint_ref_list_enabled(self, enabled):
+        """只有参考图层整列禁用时，这一列的列表底色才是灰；平时保持纯白。"""
+        color = "#ffffff" if enabled else "#eff0f0"
+        self.ref_layer_list.viewport().setStyleSheet("background-color: %s;" % color)
+
     def _refresh_snap_special_extra_visibility(self):
         mode = self._effective_snap_ref_mode()
         use_ref = mode == 'standard' or mode in SPECIAL_REF_GEOM
         self._rebuild_special_form(mode)
-        self.ref_layer_list.setEnabled(use_ref)
-        self.ref_filter_stack.setEnabled(use_ref)
+        self._sync_ref_list_participation(use_ref)
         poly_area_row = mode == 'polygon_inspect'
         self.w_poly_extra.setVisible(poly_area_row)
         show_metric = mode in (
@@ -4310,7 +4301,7 @@ class CDETDialog(QDialog):
         mode = self._effective_snap_ref_mode()
         if mode == 'line_length':
             dlg = CdetLineLengthRuleDialog(self, self._line_length_rule)
-            if run_dialog(dlg) == QDialog.Accepted:
+            if run_dialog(dlg) == QDialog.DialogCode.Accepted:
                 rr = dlg.result_rule()
                 if rr:
                     self._line_length_rule = rr
@@ -4318,7 +4309,7 @@ class CDETDialog(QDialog):
                     self._persist_settings()
         elif mode in ('point_line_count', 'line_point_count', 'poly_point_count', 'poly_line_count'):
             dlg = CdetSnapCountRuleDialog(self, self._snap_count_rule)
-            if run_dialog(dlg) == QDialog.Accepted:
+            if run_dialog(dlg) == QDialog.DialogCode.Accepted:
                 rr = dlg.result_rule()
                 if rr:
                     self._snap_count_rule = rr
@@ -4438,44 +4429,44 @@ class CDETDialog(QDialog):
         self._sync_mode_toggle_text()
         try:
             self._init_multi_combo()
-        except Exception:
+        except Exception:  # nosec B110
             pass
         try:
             self._update_line_rule_label()
-        except Exception:
+        except Exception:  # nosec B110
             pass
         try:
             self._update_tolerance_display()
-        except Exception:
+        except Exception:  # nosec B110
             pass
         try:
             self._refill_translated_combos()
-        except Exception:
+        except Exception:  # nosec B110
             pass
         try:
             self._restore_filter_button_tips()
-        except Exception:
+        except Exception:  # nosec B110
             pass
         try:
             # After name-tip restore, re-apply selected group feature-count (current language).
             self._sync_field_filter_checked()
-        except Exception:
+        except Exception:  # nosec B110
             pass
         try:
             self._update_scheme_layer_match_label()
-        except Exception:
+        except Exception:  # nosec B110
             pass
         try:
             self._retranslate_snap_ref_mode_combo()
-        except Exception:
+        except Exception:  # nosec B110
             pass
         try:
             self._sync_open_category_dialog()
-        except Exception:
+        except Exception:  # nosec B110
             pass
         try:
             self._settle_main_layout()
-        except Exception:
+        except Exception:  # nosec B110
             pass
 
     def _refresh_layers(self):
@@ -4496,7 +4487,7 @@ class CDETDialog(QDialog):
         self._sync_field_filter_checked()
         try:
             self._sync_open_category_dialog()
-        except Exception:
+        except Exception:  # nosec B110
             pass
         self.iface.messageBar().pushSuccess(
             DISPLAY_NAME,
@@ -4533,10 +4524,10 @@ class CDETDialog(QDialog):
         if not hasattr(self, 'spin_tolerance'):
             return
         spin = self.spin_tolerance
-        spin.setButtonSymbols(QAbstractSpinBox.NoButtons)
+        spin.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
         try:
             spin.setFixedWidth(16777215)
-        except Exception:
+        except Exception:  # nosec B110
             pass
         # Width fits 6 decimal places (e.g. 0.000000) plus frame padding; no step buttons.
         sample = '0.000000'
@@ -4549,13 +4540,13 @@ class CDETDialog(QDialog):
         spin.setFixedWidth(max(width, 72))
         spin.setMinimumWidth(max(width, 72))
         spin.setMaximumWidth(max(width, 72))
-        spin.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        spin.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         if hasattr(self, 'lbl_unit'):
             self.lbl_unit.setWordWrap(False)
-            self.lbl_unit.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Fixed)
+            self.lbl_unit.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
         if hasattr(self, 'lbl_meter_hint'):
             self.lbl_meter_hint.setWordWrap(False)
-            self.lbl_meter_hint.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Fixed)
+            self.lbl_meter_hint.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
 
     def _update_meter_hint(self):
         if self.is_geographic:
@@ -4599,7 +4590,7 @@ class CDETDialog(QDialog):
         for code, label in multi_match_choices():
             self.combo_multi_match.addItem(label, code)
             self.combo_multi_match.setItemData(
-                self.combo_multi_match.count() - 1, multi_match_tip(code), Qt.ToolTipRole
+                self.combo_multi_match.count() - 1, multi_match_tip(code), Qt.ItemDataRole.ToolTipRole
             )
         self.combo_multi_match.setToolTip(self._multi_match_tip_text())
 
@@ -4641,7 +4632,7 @@ class CDETDialog(QDialog):
         self.btn_mode_toggle.setToolTip(
             self.tr('当前：{0} — 点击展开三选（吸附检测／字段命名／移动）').format(title)
         )
-        self.btn_mode_toggle.setFixedHeight(ACTION_BTN_H)
+        self.btn_mode_toggle.setFixedHeight(BOTTOM_BTN_H)
         self.setWindowTitle('%s - %s' % (self.tr('空间匹配与拓扑调整'), title))
 
 
@@ -4766,7 +4757,7 @@ class CDETDialog(QDialog):
                 self._set_title_text(self.lbl_snap_ref_title, '参考图层')
                 self.lbl_snap_ref_title.setWordWrap(False)
                 self.lbl_snap_ref_title.setMinimumWidth(0)
-                self.lbl_snap_ref_title.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+                self.lbl_snap_ref_title.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
             self._set_title_text(self.lbl_ref_title, '参考图层')
             self.options_group.setTitle(self.tr('吸附选项'))
             self.options_group.setProperty('boxTitle', '吸附选项')
@@ -4785,6 +4776,7 @@ class CDETDialog(QDialog):
             # 吸附「特殊检测」下 overlap / 面检测 / 线测量等会禁用参考列表；字段命名共用同一 ref 控件，此处必须恢复
             self.ref_layer_list.setEnabled(True)
             self.ref_filter_stack.setEnabled(True)
+            self._paint_ref_list_enabled(True)
             for b in (self.ref_btn_point, self.ref_btn_line, self.ref_btn_polygon, self.ref_btn_all):
                 b.setEnabled(True)
             self._restore_filter_button_tips(
@@ -4807,6 +4799,7 @@ class CDETDialog(QDialog):
             self.snap_right_stack.setCurrentIndex(0)
             self.ref_layer_list.setEnabled(True)
             self.ref_filter_stack.setEnabled(True)
+            self._paint_ref_list_enabled(True)
             for b in (self.ref_btn_point, self.ref_btn_line, self.ref_btn_polygon, self.ref_btn_all):
                 b.setEnabled(True)
             self._restore_filter_button_tips(
@@ -4837,21 +4830,21 @@ class CDETDialog(QDialog):
     def _geom_storage_key(self, geom):
         if geom is None:
             return 'all'
-        if geom == QgsWkbTypes.PointGeometry:
+        if geom == QgsWkbTypes.GeometryType.PointGeometry:
             return 'point'
-        if geom == QgsWkbTypes.LineGeometry:
+        if geom == QgsWkbTypes.GeometryType.LineGeometry:
             return 'line'
-        if geom == QgsWkbTypes.PolygonGeometry:
+        if geom == QgsWkbTypes.GeometryType.PolygonGeometry:
             return 'polygon'
         return 'all'
 
     def _geom_from_storage_key(self, key):
         if key == 'point':
-            return QgsWkbTypes.PointGeometry
+            return QgsWkbTypes.GeometryType.PointGeometry
         if key == 'line':
-            return QgsWkbTypes.LineGeometry
+            return QgsWkbTypes.GeometryType.LineGeometry
         if key == 'polygon':
-            return QgsWkbTypes.PolygonGeometry
+            return QgsWkbTypes.GeometryType.PolygonGeometry
         return None
 
     def _layers_in_tree_group(self, group):
@@ -5101,7 +5094,7 @@ class CDETDialog(QDialog):
     def _get_selected_layers(self, list_widget):
         layers = []
         for item in list_widget.selectedItems():
-            data = item.data(Qt.UserRole)
+            data = item.data(Qt.ItemDataRole.UserRole)
             if isinstance(data, dict) and data.get('uri'):
                 lyr = QgsVectorLayer(data['uri'], data.get('name', item.text()), 'ogr')
                 if lyr.isValid():
@@ -5235,10 +5228,10 @@ class CDETDialog(QDialog):
             self,
             self.tr('删除方案'),
             self.tr('确定删除方案「{0}」及其全部子任务吗？').format(name),
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
         )
-        if reply != QMessageBox.Yes:
+        if reply != QMessageBox.StandardButton.Yes:
             return
         self._snap_schemes.pop(name, None)
         self._snap_group_orders.pop(name, None)
@@ -5305,11 +5298,11 @@ class CDETDialog(QDialog):
         dlg.setMinimumHeight(320)
         lay = QVBoxLayout(dlg)
         lw = QListWidget()
-        lw.setSelectionMode(QAbstractItemView.NoSelection)
+        lw.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
         for name in names:
             it = QListWidgetItem(name)
-            it.setFlags(it.flags() | Qt.ItemIsUserCheckable | Qt.ItemIsEnabled)
-            it.setCheckState(Qt.Checked)
+            it.setFlags(it.flags() | Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsEnabled)
+            it.setCheckState(Qt.CheckState.Checked)
             lw.addItem(it)
         lay.addWidget(lw, 1)
         row = QHBoxLayout()
@@ -5317,7 +5310,7 @@ class CDETDialog(QDialog):
         btn_none = QPushButton(self.tr('全不选'))
 
         def _set_all(checked):
-            state = Qt.Checked if checked else Qt.Unchecked
+            state = Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked
             for i in range(lw.count()):
                 lw.item(i).setCheckState(state)
 
@@ -5327,17 +5320,17 @@ class CDETDialog(QDialog):
         row.addWidget(btn_none)
         row.addStretch(1)
         lay.addLayout(row)
-        bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        bb = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         localize_button_box(bb)
         bb.accepted.connect(dlg.accept)
         bb.rejected.connect(dlg.reject)
         lay.addWidget(bb)
-        if run_dialog(dlg) != QDialog.Accepted:
+        if run_dialog(dlg) != QDialog.DialogCode.Accepted:
             return None
         picked = []
         for i in range(lw.count()):
             it = lw.item(i)
-            if it.checkState() == Qt.Checked:
+            if it.checkState() == Qt.CheckState.Checked:
                 picked.append(it.text())
         return picked
 
@@ -5540,11 +5533,11 @@ class CDETDialog(QDialog):
             ),
         )
         lw = QListWidget()
-        lw.setSelectionMode(QAbstractItemView.NoSelection)
+        lw.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
         for name in sorted(self._snap_schemes.keys()):
             it = QListWidgetItem(name)
-            it.setFlags(it.flags() | Qt.ItemIsUserCheckable | Qt.ItemIsEnabled)
-            it.setCheckState(Qt.Checked)
+            it.setFlags(it.flags() | Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsEnabled)
+            it.setCheckState(Qt.CheckState.Checked)
             lw.addItem(it)
         lay.addWidget(lw, 1)
 
@@ -5554,7 +5547,7 @@ class CDETDialog(QDialog):
 
         def _set_all_checked(checked):
             for i in range(lw.count()):
-                lw.item(i).setCheckState(Qt.Checked if checked else Qt.Unchecked)
+                lw.item(i).setCheckState(Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked)
 
         btn_all.clicked.connect(lambda: _set_all_checked(True))
         btn_none.clicked.connect(lambda: _set_all_checked(False))
@@ -5563,18 +5556,18 @@ class CDETDialog(QDialog):
         row_quick.addStretch(1)
         lay.addLayout(row_quick)
 
-        bbox = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        bbox = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         localize_button_box(bbox)
         bbox.accepted.connect(dlg.accept)
         bbox.rejected.connect(dlg.reject)
         lay.addWidget(bbox)
 
-        if run_dialog(dlg) != QDialog.Accepted:
+        if run_dialog(dlg) != QDialog.DialogCode.Accepted:
             return None
         picked = []
         for i in range(lw.count()):
             it = lw.item(i)
-            if it.checkState() == Qt.Checked:
+            if it.checkState() == Qt.CheckState.Checked:
                 picked.append(it.text())
         return picked
 
@@ -5798,9 +5791,9 @@ class CDETDialog(QDialog):
         allowed = SPECIAL_TARGET_GEOMS.get(ref_mode)
         if allowed:
             gname = {
-                QgsWkbTypes.PointGeometry: 'point',
-                QgsWkbTypes.LineGeometry: 'line',
-                QgsWkbTypes.PolygonGeometry: 'polygon',
+                QgsWkbTypes.GeometryType.PointGeometry: 'point',
+                QgsWkbTypes.GeometryType.LineGeometry: 'line',
+                QgsWkbTypes.GeometryType.PolygonGeometry: 'polygon',
             }.get(self._snap_target_geom_uniform())
             if gname not in allowed:
                 return None
@@ -5835,16 +5828,16 @@ class CDETDialog(QDialog):
         dlg.setWindowTitle(self.tr('加入到方案组'))
         lay = QVBoxLayout(dlg)
         lw = QListWidget()
-        lw.setSelectionMode(QAbstractItemView.MultiSelection)
+        lw.setSelectionMode(QAbstractItemView.SelectionMode.MultiSelection)
         for n in names:
             lw.addItem(n)
         lay.addWidget(lw)
-        bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        bb = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         localize_button_box(bb)
         bb.accepted.connect(dlg.accept)
         bb.rejected.connect(dlg.reject)
         lay.addWidget(bb)
-        if run_dialog(dlg) != QDialog.Accepted:
+        if run_dialog(dlg) != QDialog.DialogCode.Accepted:
             return []
         return [i.text() for i in lw.selectedItems()]
 
@@ -5983,7 +5976,7 @@ class CDETDialog(QDialog):
         tree = QTreeWidget()
         tree.setColumnCount(1)
         tree.setHeaderHidden(True)
-        tree.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        tree.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         tree.setUniformRowHeights(False)
         tree.setRootIsDecorated(True)
         tree.setIndentation(18)
@@ -5995,7 +5988,7 @@ class CDETDialog(QDialog):
                 root = tree.invisibleRootItem()
                 for i in range(root.childCount()):
                     g_item = root.child(i)
-                    gk = g_item.data(0, Qt.UserRole + 1)
+                    gk = g_item.data(0, Qt.ItemDataRole.UserRole + 1)
                     expand_state[gk] = g_item.isExpanded()
             tree.clear()
             order = self._scheme_group_order(name)
@@ -6012,8 +6005,8 @@ class CDETDialog(QDialog):
                 g_item = QTreeWidgetItem(tree)
                 child_idxs = buckets.get(g, [])
                 g_item.setText(0, self.tr('▸ {0}  ({1})').format(self._group_display_name(g), len(child_idxs)))
-                g_item.setData(0, Qt.UserRole, ('group', g))
-                g_item.setData(0, Qt.UserRole + 1, g)
+                g_item.setData(0, Qt.ItemDataRole.UserRole, ('group', g))
+                g_item.setData(0, Qt.ItemDataRole.UserRole + 1, g)
                 font = g_item.font(0)
                 font.setBold(True)
                 g_item.setFont(0, font)
@@ -6022,8 +6015,8 @@ class CDETDialog(QDialog):
                     t = arr[idx]
                     c_item = QTreeWidgetItem(g_item)
                     c_item.setText(0, self._task_display_text(counter, t))
-                    c_item.setData(0, Qt.UserRole, ('task', idx))
-                    c_item.setData(0, Qt.UserRole + 1, g)
+                    c_item.setData(0, Qt.ItemDataRole.UserRole, ('task', idx))
+                    c_item.setData(0, Qt.ItemDataRole.UserRole + 1, g)
                     if self._task_missing_layer_names(t):
                         c_item.setForeground(0, QBrush(QColor('#C62828')))
                     if focus_payload is not None and focus_payload[0] == 'task' and focus_payload[1] == idx:
@@ -6094,7 +6087,7 @@ class CDETDialog(QDialog):
         def _selected_task_indices():
             s = set()
             for it in tree.selectedItems():
-                d = it.data(0, Qt.UserRole)
+                d = it.data(0, Qt.ItemDataRole.UserRole)
                 if d and d[0] == 'task':
                     s.add(d[1])
             return sorted(s)
@@ -6102,7 +6095,7 @@ class CDETDialog(QDialog):
         def _selected_group_keys():
             s = []
             for it in tree.selectedItems():
-                d = it.data(0, Qt.UserRole)
+                d = it.data(0, Qt.ItemDataRole.UserRole)
                 if d and d[0] == 'group':
                     s.append(d[1])
             return s
@@ -6111,7 +6104,7 @@ class CDETDialog(QDialog):
             it = tree.currentItem()
             if it is None:
                 return None
-            data = it.data(0, Qt.UserRole)
+            data = it.data(0, Qt.ItemDataRole.UserRole)
             if not data:
                 return None
             return data  # ('task', idx) 或 ('group', group_key)
@@ -6354,8 +6347,8 @@ class CDETDialog(QDialog):
                 if QMessageBox.question(
                     self, self.tr('确认删除'),
                     self.tr('确定删除选中的 {0} 个子任务吗？').format(len(tidx)),
-                    QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
-                ) != QMessageBox.Yes:
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No,
+                ) != QMessageBox.StandardButton.Yes:
                     return
                 for ix in sorted(tidx, reverse=True):
                     if 0 <= ix < len(arr):
@@ -6418,7 +6411,7 @@ class CDETDialog(QDialog):
                 'QPushButton:hover { background-color: #607D8B; }'
             )
             for b in (btn_keep, btn_drop, btn_cancel):
-                b.setSizePolicy(QSizePolicy.MinimumExpanding, QSizePolicy.Fixed)
+                b.setSizePolicy(QSizePolicy.Policy.MinimumExpanding, QSizePolicy.Policy.Fixed)
             btn_keep.clicked.connect(lambda: _pick('keep'))
             btn_drop.clicked.connect(lambda: _pick('drop'))
             btn_cancel.clicked.connect(del_dlg.reject)
@@ -6448,7 +6441,7 @@ class CDETDialog(QDialog):
 
         # 单击组节点切换展开/折叠（不影响子任务）
         def _on_item_clicked(item, _col):
-            data = item.data(0, Qt.UserRole)
+            data = item.data(0, Qt.ItemDataRole.UserRole)
             if data and data[0] == 'group':
                 item.setExpanded(not item.isExpanded())
 
@@ -6509,7 +6502,7 @@ class CDETDialog(QDialog):
         grid.addWidget(name_edit, 0, 1)
         lbl_tol = QLabel()
         lbl_tol.setWordWrap(True)
-        lbl_tol.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        lbl_tol.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
 
         def _crs_for_edit_tol_hint():
             for n in task.get('target_names', []):
@@ -6530,7 +6523,7 @@ class CDETDialog(QDialog):
         tol.setDecimals(6)
         tol.setMinimum(0.000001)
         tol.setMaximum(10000.0)
-        tol.setButtonSymbols(QAbstractSpinBox.NoButtons)
+        tol.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
         tol.setMinimumWidth(132)
         tol.setValue(float(task.get('tolerance', 0.00001)))
         _refresh_tol_caption()
@@ -6598,7 +6591,7 @@ class CDETDialog(QDialog):
         gb_t = QGroupBox(self.tr('判断图层'))
         lt = QVBoxLayout(gb_t)
         lw_t = QListWidget()
-        lw_t.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        lw_t.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         lw_t.setMinimumHeight(100)
         for n in task.get('target_names', []):
             if n:
@@ -6640,7 +6633,7 @@ class CDETDialog(QDialog):
             vpoly = QVBoxLayout(gb_spec)
             lw_poly_out = QListWidget()
             lw_poly_out.setMinimumHeight(160)
-            lw_poly_out.setSelectionMode(QAbstractItemView.NoSelection)
+            lw_poly_out.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
             POLY_ROWS = (
                 (POLYGON_SUB_OVERLAP_HIT, self.tr('重叠：输出参与重叠的面要素')),
                 (POLYGON_OUT_OVERLAP_FRAGMENTS, self.tr('重叠：相交面片（可多片独立多边形）')),
@@ -6669,9 +6662,9 @@ class CDETDialog(QDialog):
             chk_src = want_codes if want_codes is not None else default_on
             for code, lbl in POLY_ROWS:
                 it = QListWidgetItem(lbl)
-                it.setFlags(it.flags() | Qt.ItemIsUserCheckable | Qt.ItemIsEnabled)
-                it.setData(Qt.UserRole, code)
-                it.setCheckState(Qt.Checked if code in chk_src else Qt.Unchecked)
+                it.setFlags(it.flags() | Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsEnabled)
+                it.setData(Qt.ItemDataRole.UserRole, code)
+                it.setCheckState(Qt.CheckState.Checked if code in chk_src else Qt.CheckState.Unchecked)
                 lw_poly_out.addItem(it)
             vpoly.addWidget(lw_poly_out)
             row_atol = QHBoxLayout()
@@ -6703,7 +6696,7 @@ class CDETDialog(QDialog):
 
             def _open_lr_editor():
                 d = CdetLineLengthRuleDialog(self, dict(edit_line_rule))
-                if run_dialog(d) == QDialog.Accepted:
+                if run_dialog(d) == QDialog.DialogCode.Accepted:
                     nr = d.result_rule()
                     if nr:
                         edit_line_rule.clear()
@@ -6723,7 +6716,7 @@ class CDETDialog(QDialog):
 
             def _open_cr_editor():
                 d = CdetSnapCountRuleDialog(self, dict(edit_count_rule))
-                if run_dialog(d) == QDialog.Accepted:
+                if run_dialog(d) == QDialog.DialogCode.Accepted:
                     nr = d.result_rule()
                     if nr:
                         edit_count_rule.clear()
@@ -6825,7 +6818,7 @@ class CDETDialog(QDialog):
         elif sp_key == 'point_line_chain':
             lr.addWidget(QLabel(self.tr('须指定参考线图层（可多选）；判断图层须为点图层。')))
         lw_r = QListWidget()
-        lw_r.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        lw_r.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         lw_r.setMinimumHeight(100)
         for n in task.get('ref_names', []):
             if n:
@@ -6886,7 +6879,7 @@ class CDETDialog(QDialog):
             ok_any = False
             if sp_key in SPECIAL_KEYS:
                 sm.addItem(self.tr('特殊检测：{0}').format(special_mode_label(sp_key)), '__special__')
-                sm.setItemData(0, special_mode_tip(sp_key), Qt.ToolTipRole)
+                sm.setItemData(0, special_mode_tip(sp_key), Qt.ItemDataRole.ToolTipRole)
                 sm.setToolTip(special_mode_tip(sp_key))
                 idx = sm.findData(preserve if preserve else '__special__')
                 if idx < 0 and preserve:
@@ -6903,7 +6896,7 @@ class CDETDialog(QDialog):
             if t_layers and r_layers:
                 for entry in spatial_mode_choices(t_layers[0], r_layers[0]):
                     sm.addItem(entry[1], entry[0])
-                    sm.setItemData(sm.count() - 1, entry[2], Qt.ToolTipRole)
+                    sm.setItemData(sm.count() - 1, entry[2], Qt.ItemDataRole.ToolTipRole)
                     ok_any = True
             idx = sm.findData(preserve)
             if idx >= 0:
@@ -6957,7 +6950,7 @@ class CDETDialog(QDialog):
 
         refresh_sm()
 
-        bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        bb = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         localize_button_box(bb)
         lay.addWidget(bb)
 
@@ -6967,8 +6960,8 @@ class CDETDialog(QDialog):
                 return codes
             for row in range(lw_poly_out.count()):
                 it = lw_poly_out.item(row)
-                if it.checkState() == Qt.Checked:
-                    c = it.data(Qt.UserRole)
+                if it.checkState() == Qt.CheckState.Checked:
+                    c = it.data(Qt.ItemDataRole.UserRole)
                     if c:
                         codes.append(c)
             return codes
@@ -6996,7 +6989,7 @@ class CDETDialog(QDialog):
 
         bb.accepted.connect(_try_accept)
         bb.rejected.connect(dlg.reject)
-        if run_dialog(dlg) != QDialog.Accepted:
+        if run_dialog(dlg) != QDialog.DialogCode.Accepted:
             return None
         out = dict(task)
         out.update({
@@ -7069,7 +7062,7 @@ class CDETDialog(QDialog):
             settings_set(self.settings, 'polygon_outputs_json',
                 json.dumps(self._polygon_outputs_selected(), ensure_ascii=False),
             )
-        except Exception:
+        except Exception:  # nosec B110
             pass
         settings_set(self.settings, 'overlap_scope',
             normalize_overlap_scope(self.combo_overlap_scope.currentData()),
@@ -7078,13 +7071,13 @@ class CDETDialog(QDialog):
             settings_set(self.settings, 'line_length_rule_json',
                 json.dumps(self._line_length_rule, ensure_ascii=False),
             )
-        except Exception:
+        except Exception:  # nosec B110
             pass
         try:
             settings_set(self.settings, 'snap_count_rule_json',
                 json.dumps(self._snap_count_rule, ensure_ascii=False),
             )
-        except Exception:
+        except Exception:  # nosec B110
             pass
         settings_set(self.settings, 'count_attach', normalize_count_attach(self._count_attach))
         settings_set(self.settings, 'count_output_mates', bool(self._count_output_mates))
@@ -7406,7 +7399,7 @@ class CDETDialog(QDialog):
 
     def _show_count_rule_dialog(self):
         dlg = CdetCountRuleDialog(self, self._count_rule)
-        if run_dialog(dlg) != QDialog.Accepted:
+        if run_dialog(dlg) != QDialog.DialogCode.Accepted:
             return False
         rule = dlg.result_rule()
         if not rule:
@@ -7499,9 +7492,9 @@ class CDETDialog(QDialog):
         lw = QListWidget()
         for i, task in enumerate(tasks):
             it = QListWidgetItem(task.get('method_name') or task.get('run_name') or self.tr('子任务'))
-            it.setFlags(it.flags() | Qt.ItemIsUserCheckable)
-            it.setCheckState(Qt.Checked)
-            it.setData(Qt.UserRole, i)
+            it.setFlags(it.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+            it.setCheckState(Qt.CheckState.Checked)
+            it.setData(Qt.ItemDataRole.UserRole, i)
             lw.addItem(it)
         layout.addWidget(lw, 1)
         row = QHBoxLayout()
@@ -7520,17 +7513,17 @@ class CDETDialog(QDialog):
             for i in range(lw.count()):
                 lw.item(i).setCheckState(state)
 
-        btn_all.clicked.connect(lambda: _set_all(Qt.Checked))
-        btn_none.clicked.connect(lambda: _set_all(Qt.Unchecked))
+        btn_all.clicked.connect(lambda: _set_all(Qt.CheckState.Checked))
+        btn_none.clicked.connect(lambda: _set_all(Qt.CheckState.Unchecked))
         btn_ok.clicked.connect(dlg.accept)
         btn_cancel.clicked.connect(dlg.reject)
-        if run_dialog(dlg) != QDialog.Accepted:
+        if run_dialog(dlg) != QDialog.DialogCode.Accepted:
             return None
         picked = []
         for i in range(lw.count()):
             it = lw.item(i)
-            if it.checkState() == Qt.Checked:
-                picked.append(tasks[it.data(Qt.UserRole)])
+            if it.checkState() == Qt.CheckState.Checked:
+                picked.append(tasks[it.data(Qt.ItemDataRole.UserRole)])
         return picked
 
     def _run_field_scheme_batch(self, scheme_name):
@@ -7578,9 +7571,9 @@ class CDETDialog(QDialog):
     # ===== ①c 移动方案（与吸附／字段方案库分存，禁串库） =====
     def _geom_type_name(self, geom_type):
         return {
-            QgsWkbTypes.PointGeometry: self.tr('点'),
-            QgsWkbTypes.LineGeometry: self.tr('线'),
-            QgsWkbTypes.PolygonGeometry: self.tr('面'),
+            QgsWkbTypes.GeometryType.PointGeometry: self.tr('点'),
+            QgsWkbTypes.GeometryType.LineGeometry: self.tr('线'),
+            QgsWkbTypes.GeometryType.PolygonGeometry: self.tr('面'),
         }.get(geom_type, self.tr('未知'))
 
     def _first_project_layer(self, names):
@@ -7685,7 +7678,7 @@ class CDETDialog(QDialog):
             '不用再到参考图层那边单独选特殊检测。'
         )
         idx = combo.currentIndex()
-        tip = combo.itemData(idx, Qt.ToolTipRole) if idx >= 0 else ''
+        tip = combo.itemData(idx, Qt.ItemDataRole.ToolTipRole) if idx >= 0 else ''
         text = combo.currentText() if idx >= 0 else ''
         combo.setToolTip('{0}\n\n{1}{2}\n{3}'.format(
             base, self.tr('当前：'), text, tip or '',
@@ -7835,16 +7828,16 @@ class CDETDialog(QDialog):
         dlg.setWindowTitle(self.tr('加入到移动方案'))
         lay = QVBoxLayout(dlg)
         lw = QListWidget()
-        lw.setSelectionMode(QAbstractItemView.MultiSelection)
+        lw.setSelectionMode(QAbstractItemView.SelectionMode.MultiSelection)
         for name in names:
             lw.addItem(name)
         lay.addWidget(lw)
-        bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        bb = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         localize_button_box(bb)
         bb.accepted.connect(dlg.accept)
         bb.rejected.connect(dlg.reject)
         lay.addWidget(bb)
-        if run_dialog(dlg) != QDialog.Accepted:
+        if run_dialog(dlg) != QDialog.DialogCode.Accepted:
             return []
         return [i.text() for i in lw.selectedItems()]
 
@@ -7881,7 +7874,7 @@ class CDETDialog(QDialog):
             self._cat_move['ref'] = normalize_category_map(data.get('ref_categories'))
             try:
                 self.spin_tolerance.setValue(float(data.get('tolerance', self.spin_tolerance.value())))
-            except Exception:
+            except Exception:  # nosec B110
                 pass
             self._restore_move_mode = data.get('move_mode') or 'standard'
             self._skip_cat_harvest = True
@@ -7905,7 +7898,7 @@ class CDETDialog(QDialog):
         dlg.resize(760, 460)
         lay = QVBoxLayout(dlg)
         lw = QListWidget()
-        lw.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        lw.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         lay.addWidget(lw, 1)
 
         def _fill(focus=None):
@@ -7913,7 +7906,7 @@ class CDETDialog(QDialog):
             arr = self._move_schemes.get(name) or []
             for i, task in enumerate(arr):
                 it = QListWidgetItem(self._move_task_display_text(i + 1, task))
-                it.setData(Qt.UserRole, i)
+                it.setData(Qt.ItemDataRole.UserRole, i)
                 missing = []
                 for layer_name in (task.get('target_names') or []) + (task.get('ref_names') or []):
                     if layer_name and not self.project.mapLayersByName(layer_name):
@@ -7929,7 +7922,7 @@ class CDETDialog(QDialog):
         def _selected_indexes():
             idxs = []
             for it in lw.selectedItems():
-                val = it.data(Qt.UserRole)
+                val = it.data(Qt.ItemDataRole.UserRole)
                 if isinstance(val, int):
                     idxs.append(val)
             return sorted(set(idxs))
@@ -7976,9 +7969,9 @@ class CDETDialog(QDialog):
             reply = QMessageBox.question(
                 dlg, self.tr('删除子任务'),
                 self.tr('确定删除选中的 {0} 条子任务吗？').format(len(idxs)),
-                QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No,
             )
-            if reply != QMessageBox.Yes:
+            if reply != QMessageBox.StandardButton.Yes:
                 return
             arr = self._move_schemes.get(name) or []
             for i in reversed(idxs):
@@ -8028,7 +8021,7 @@ class CDETDialog(QDialog):
         tol = QDoubleSpinBox()
         tol.setDecimals(6)
         tol.setRange(0.000001, 10000.0)
-        tol.setButtonSymbols(QAbstractSpinBox.NoButtons)
+        tol.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
         tol.setMinimumWidth(132)
         try:
             tol.setValue(float(task.get('tolerance') or 0.00001))
@@ -8107,7 +8100,7 @@ class CDETDialog(QDialog):
         box_r, list_r = _name_box(self.tr('参考图层'), task.get('ref_names'), _on_names_changed)
         lay.addWidget(box_t)
         lay.addWidget(box_r)
-        bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        bb = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         localize_button_box(bb)
         lay.addWidget(bb)
 
@@ -8134,7 +8127,7 @@ class CDETDialog(QDialog):
 
         bb.accepted.connect(_accept)
         bb.rejected.connect(dlg.reject)
-        if run_dialog(dlg) != QDialog.Accepted:
+        if run_dialog(dlg) != QDialog.DialogCode.Accepted:
             return None
         return dlg.property('task')
 
@@ -8221,10 +8214,10 @@ class CDETDialog(QDialog):
             self,
             self.tr('删除移动方案'),
             self.tr('确定删除移动方案「{0}」及其全部子任务吗？').format(name),
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
         )
-        if reply != QMessageBox.Yes:
+        if reply != QMessageBox.StandardButton.Yes:
             return
         self._move_schemes.pop(name, None)
         self._active_move_scheme = self.MOVE_SCHEME_CUSTOM
@@ -8326,12 +8319,12 @@ class CDETDialog(QDialog):
         dlg.setMinimumHeight(360)
         lay = QVBoxLayout(dlg)
         lw = QListWidget()
-        lw.setSelectionMode(QAbstractItemView.NoSelection)
+        lw.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
         for i, task in enumerate(tasks):
             it = QListWidgetItem(self._move_task_display_text(i + 1, task))
-            it.setFlags(it.flags() | Qt.ItemIsUserCheckable | Qt.ItemIsEnabled)
-            it.setCheckState(Qt.Checked)
-            it.setData(Qt.UserRole, i)
+            it.setFlags(it.flags() | Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsEnabled)
+            it.setCheckState(Qt.CheckState.Checked)
+            it.setData(Qt.ItemDataRole.UserRole, i)
             lw.addItem(it)
         lay.addWidget(lw, 1)
         row = QHBoxLayout()
@@ -8339,8 +8332,8 @@ class CDETDialog(QDialog):
         btn_none = QPushButton(self.tr('全不选'))
         btn_ok = QPushButton(self.tr('执行'))
         btn_cancel = QPushButton(self.tr('取消'))
-        btn_all.clicked.connect(lambda: [lw.item(i).setCheckState(Qt.Checked) for i in range(lw.count())])
-        btn_none.clicked.connect(lambda: [lw.item(i).setCheckState(Qt.Unchecked) for i in range(lw.count())])
+        btn_all.clicked.connect(lambda: [lw.item(i).setCheckState(Qt.CheckState.Checked) for i in range(lw.count())])
+        btn_none.clicked.connect(lambda: [lw.item(i).setCheckState(Qt.CheckState.Unchecked) for i in range(lw.count())])
         row.addWidget(btn_all)
         row.addWidget(btn_none)
         row.addStretch(1)
@@ -8349,13 +8342,13 @@ class CDETDialog(QDialog):
         lay.addLayout(row)
         btn_ok.clicked.connect(dlg.accept)
         btn_cancel.clicked.connect(dlg.reject)
-        if run_dialog(dlg) != QDialog.Accepted:
+        if run_dialog(dlg) != QDialog.DialogCode.Accepted:
             return None
         picked = []
         for i in range(lw.count()):
             it = lw.item(i)
-            if it.checkState() == Qt.Checked:
-                picked.append(tasks[it.data(Qt.UserRole)])
+            if it.checkState() == Qt.CheckState.Checked:
+                picked.append(tasks[it.data(Qt.ItemDataRole.UserRole)])
         return picked
 
     def _run_move_scheme_batch(self, scheme_name):
@@ -8482,9 +8475,9 @@ class CDETDialog(QDialog):
                 allowed = SPECIAL_TARGET_GEOMS.get(ref_mode)
                 if allowed:
                     gname = {
-                        QgsWkbTypes.PointGeometry: 'point',
-                        QgsWkbTypes.LineGeometry: 'line',
-                        QgsWkbTypes.PolygonGeometry: 'polygon',
+                        QgsWkbTypes.GeometryType.PointGeometry: 'point',
+                        QgsWkbTypes.GeometryType.LineGeometry: 'line',
+                        QgsWkbTypes.GeometryType.PolygonGeometry: 'polygon',
                     }.get(geo)
                     if gname not in allowed:
                         kind = {
@@ -8506,9 +8499,9 @@ class CDETDialog(QDialog):
                 if ref_mode in SPECIAL_REF_GEOM:
                     ref_need = SPECIAL_REF_GEOM[ref_mode]
                     ref_wkb = {
-                        'point': QgsWkbTypes.PointGeometry,
-                        'line': QgsWkbTypes.LineGeometry,
-                        'polygon': QgsWkbTypes.PolygonGeometry,
+                        'point': QgsWkbTypes.GeometryType.PointGeometry,
+                        'line': QgsWkbTypes.GeometryType.LineGeometry,
+                        'polygon': QgsWkbTypes.GeometryType.PolygonGeometry,
                     }[ref_need]
                     ref_txt = {'point': self.tr('点'), 'line': self.tr('线'), 'polygon': self.tr('面')}[ref_need]
                     if not ref_layers:
@@ -8559,7 +8552,7 @@ class CDETDialog(QDialog):
         tree.setExpandsOnDoubleClick(False)
         tree.setRootIsDecorated(True)
         tree.setIndentation(18)
-        tree.setSelectionMode(QAbstractItemView.NoSelection)
+        tree.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
         layout.addWidget(tree)
 
         order = self._scheme_group_order(scheme_name)
@@ -8584,25 +8577,25 @@ class CDETDialog(QDialog):
                 continue
             g_item = QTreeWidgetItem(tree)
             g_item.setText(0, self.tr('{0}  ({1})').format(self._group_display_name(g), len(child_idxs)))
-            g_item.setFlags(g_item.flags() | Qt.ItemIsUserCheckable | Qt.ItemIsAutoTristate)
-            g_item.setCheckState(0, Qt.Checked)
+            g_item.setFlags(g_item.flags() | Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsAutoTristate)
+            g_item.setCheckState(0, Qt.CheckState.Checked)
             font = g_item.font(0)
             font.setBold(True)
             g_item.setFont(0, font)
-            g_item.setData(0, Qt.UserRole, ('group', g))
+            g_item.setData(0, Qt.ItemDataRole.UserRole, ('group', g))
             for i in child_idxs:
                 t = tasks[i]
                 method_name = t.get('method_name', t.get('run_name', self.tr('子任务')))
                 c_item = QTreeWidgetItem(g_item)
                 c_item.setText(0, method_name)
-                c_item.setFlags(c_item.flags() | Qt.ItemIsUserCheckable)
-                c_item.setCheckState(0, Qt.Checked)
-                c_item.setData(0, Qt.UserRole, ('task', i))
+                c_item.setFlags(c_item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+                c_item.setCheckState(0, Qt.CheckState.Checked)
+                c_item.setData(0, Qt.ItemDataRole.UserRole, ('task', i))
             g_item.setExpanded(False)
 
         # 单击组名：切换展开/折叠；点击复选框区域不切换
         def _on_item_clicked(item, _col):
-            data = item.data(0, Qt.UserRole)
+            data = item.data(0, Qt.ItemDataRole.UserRole)
             if not data or data[0] != 'group':
                 return
             try:
@@ -8612,7 +8605,7 @@ class CDETDialog(QDialog):
                 # 估算：复选框 + indicator 大约位于行左侧 36px 内
                 if pos.x() <= rect.left() + 36:
                     return
-            except Exception:
+            except Exception:  # nosec B110
                 pass
             item.setExpanded(not item.isExpanded())
 
@@ -8648,11 +8641,11 @@ class CDETDialog(QDialog):
         )
         for b in (btn_all, btn_inv, btn_expand, btn_collapse):
             b.setStyleSheet(_pick_ss_actions)
-            b.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Fixed)
+            b.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
         btn_ok.setStyleSheet(_pick_ss_ok)
         btn_cancel.setStyleSheet(_pick_ss_dialog)
-        btn_ok.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Fixed)
-        btn_cancel.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Fixed)
+        btn_ok.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
+        btn_cancel.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
         btn_ok.setDefault(True)
         btn_ok.setAutoDefault(True)
         row_btn.addWidget(btn_all)
@@ -8674,7 +8667,7 @@ class CDETDialog(QDialog):
         def _set_all_checked(checked):
             state['silent'] = True
             try:
-                cs = Qt.Checked if checked else Qt.Unchecked
+                cs = Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked
                 for leaf in _iter_leaves():
                     leaf.setCheckState(0, cs)
             finally:
@@ -8686,7 +8679,7 @@ class CDETDialog(QDialog):
                 for leaf in _iter_leaves():
                     leaf.setCheckState(
                         0,
-                        Qt.Unchecked if leaf.checkState(0) == Qt.Checked else Qt.Checked,
+                        Qt.CheckState.Unchecked if leaf.checkState(0) == Qt.CheckState.Checked else Qt.CheckState.Checked,
                     )
             finally:
                 state['silent'] = False
@@ -8702,12 +8695,12 @@ class CDETDialog(QDialog):
         btn_collapse.clicked.connect(lambda: _expand_all(False))
         btn_ok.clicked.connect(dlg.accept)
         btn_cancel.clicked.connect(dlg.reject)
-        if run_dialog(dlg) != QDialog.Accepted:
+        if run_dialog(dlg) != QDialog.DialogCode.Accepted:
             return None
         picked = []
         for leaf in _iter_leaves():
-            if leaf.checkState(0) == Qt.Checked:
-                data = leaf.data(0, Qt.UserRole)
+            if leaf.checkState(0) == Qt.CheckState.Checked:
+                data = leaf.data(0, Qt.ItemDataRole.UserRole)
                 if data and data[0] == 'task':
                     picked.append(tasks[data[1]])
         return picked
@@ -8838,7 +8831,7 @@ class CDETDialog(QDialog):
         self._in_resize_settle = True
         try:
             self._apply_tolerance_spin_compact_width()
-        except Exception:
+        except Exception:  # nosec B110
             pass
         finally:
             self._in_resize_settle = False
@@ -8868,11 +8861,11 @@ class CDETDialog(QDialog):
         task_total_features = []
         for task in tasks:
             t_layers, _ = self._resolve_layers_by_names(task.get('target_names', []))
-            c = sum(l.featureCount() for l in t_layers) if t_layers else 0
+            c = sum(layer.featureCount() for layer in t_layers) if t_layers else 0
             task_total_features.append(max(c, 1))
             total_steps += max(c, 1)
         batch_progress = QProgressDialog(self.tr('批量执行中...'), self.tr('取消'), 0, max(total_steps, 1), self)
-        batch_progress.setWindowModality(Qt.WindowModal)
+        batch_progress.setWindowModality(Qt.WindowModality.WindowModal)
         batch_progress.setMinimumDuration(0)
         done_steps = 0
         batch_overlap_skipped = []
@@ -8914,8 +8907,8 @@ class CDETDialog(QDialog):
                 if not continue_on_error:
                     break
                 continue
-            target_total = sum(max(0, int(l.featureCount())) for l in t_layers)
-            ref_total = sum(max(0, int(l.featureCount())) for l in r_layers)
+            target_total = sum(max(0, int(layer.featureCount())) for layer in t_layers)
+            ref_total = sum(max(0, int(layer.featureCount())) for layer in r_layers)
             if target_total <= 0:
                 fail_empty_cnt += 1
                 reason = self.tr('判断图层无要素')
@@ -9051,9 +9044,9 @@ class CDETDialog(QDialog):
             msg += '\n' + self.tr('明细：\n') + '\n'.join(lines)
         if batch_overlap_skipped:
             mb = QMessageBox(self)
-            mb.setIcon(QMessageBox.Information)
+            mb.setIcon(QMessageBox.Icon.Information)
             mb.setWindowTitle(self.tr('批量监测结果'))
-            mb.setTextFormat(Qt.RichText)
+            mb.setTextFormat(Qt.TextFormat.RichText)
             uniq = sorted(set(batch_overlap_skipped))
             esc = html.escape(msg, quote=True)
             red_title = html.escape(self.tr('以下判断图层在项目中未找到，已从对应重叠检测中跳过：'), quote=True)

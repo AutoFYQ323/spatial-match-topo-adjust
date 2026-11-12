@@ -62,7 +62,7 @@ try:
 except ImportError:
     from cdet_snap_special import SPECIAL_KEYS, dispatch_snap_special
 from .i18n import tr as _i18n_tr
-from .qtutil import AppMessageBox as QMessageBox
+from .qtutil import add_features_fast, tick_progress, AppMessageBox as QMessageBox
 from .errors import (
     CANCELLED as ERR_CANCELLED,
     GEOM_MISMATCH as ERR_GEOM_MISMATCH,
@@ -109,7 +109,7 @@ class CDETCore:
 
     @staticmethod
     def _line_segments_xy(line_geom):
-        if line_geom.isEmpty() or line_geom.type() != QgsWkbTypes.LineGeometry:
+        if line_geom.isEmpty() or line_geom.type() != QgsWkbTypes.GeometryType.LineGeometry:
             return []
         out = []
         parts = line_geom.asMultiPolyline() if line_geom.isMultipart() else [line_geom.asPolyline()]
@@ -152,7 +152,7 @@ class CDETCore:
                     if e['layer'].id() == exclude_ref_layer_id and int(e['fid']) == int(exclude_ref_fid):
                         continue
                 rg = e['geom']
-                if rg.type() != QgsWkbTypes.LineGeometry or rg.isEmpty():
+                if rg.type() != QgsWkbTypes.GeometryType.LineGeometry or rg.isEmpty():
                     continue
                 for b1, b2 in self._line_segments_xy(rg):
                     if self._segment_pair_match(a1, a2, b1, b2, tol):
@@ -184,12 +184,12 @@ class CDETCore:
                 if e['layer'].id() == exclude_ref_layer_id and int(e['fid']) == int(exclude_ref_fid):
                     continue
             rg = e['geom']
-            if rg.type() != QgsWkbTypes.LineGeometry or rg.isEmpty():
+            if rg.type() != QgsWkbTypes.GeometryType.LineGeometry or rg.isEmpty():
                 continue
             try:
                 if gseg.distance(rg) <= tol:
                     return True
-            except Exception:
+            except Exception:  # nosec B112
                 continue
         return False
 
@@ -304,10 +304,10 @@ class CDETCore:
                 self.iface.mainWindow(),
                 self.tr('坐标系警告'),
                 crs_check['message'] + self.tr('\n\n是否继续执行？'),
-                QMessageBox.Yes | QMessageBox.No,
-                QMessageBox.No
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No
             )
-            if reply == QMessageBox.No:
+            if reply == QMessageBox.StandardButton.No:
                 return {'ok': False, 'error': self.tr('用户取消执行'), 'error_code': ERR_CANCELLED}
 
         start_time = time.time()
@@ -353,7 +353,9 @@ class CDETCore:
 
         cat_target = params.get('_category_target')
         cat_ref = params.get('_category_ref')
-        ref_entries, ref_idx = _build_ref_state(ref_layers, base_crs, self.project, cat_ref)
+        ref_entries, ref_idx = _build_ref_state(
+            ref_layers, base_crs, self.project, cat_ref, geometry_only=True,
+        )
         self.ref_feature_count = len(ref_entries)
         if not ref_entries:
             msg = self.tr('参考图层无有效要素')
@@ -374,7 +376,7 @@ class CDETCore:
                 0, total_features,
                 self.iface.mainWindow()
             )
-            progress.setWindowModality(Qt.WindowModal)
+            progress.setWindowModality(Qt.WindowModality.WindowModal)
             progress.setMinimumDuration(0)
 
         results = {
@@ -545,7 +547,7 @@ class CDETCore:
 
         main_suffix = self.tr('_已吸附') if snap_enabled else self.tr('_未吸附')
         mode_tag = ''
-        if geom_type == QgsWkbTypes.LineGeometry and spatial_mode in self.SEGMENT_OUTPUT_LINE_MODES:
+        if geom_type == QgsWkbTypes.GeometryType.LineGeometry and spatial_mode in self.SEGMENT_OUTPUT_LINE_MODES:
             mode_tag = self._mode_name_for_layer(spatial_mode)
         if output_tag:
             base_name = f'{layer.name()}_{mode_tag}_{output_tag}{main_suffix}' if mode_tag else f'{layer.name()}_{output_tag}{main_suffix}'
@@ -559,29 +561,26 @@ class CDETCore:
 
         for feature in iter_features(layer, category_filters):
             result['processed_count'] += 1
-            if progress:
-                progress.setValue(result['processed_count'])
-                if progress.wasCanceled():
-                    break
+            if tick_progress(progress, result['processed_count']):
+                break
             if callable(progress_cb):
                 try:
                     progress_cb(result['processed_count'], total_features, layer.name())
-                except Exception:
+                except Exception:  # nosec B110
                     pass
-
-            if progress and progress.wasCanceled():
-                break
 
             geom = feature.geometry()
             if geom.isEmpty():
                 continue
 
-            check_geom = QgsGeometry(geom)
             if transform_to_base:
+                check_geom = QgsGeometry(geom)
                 try:
                     check_geom.transform(transform_to_base)
-                except Exception:
+                except Exception:  # nosec B112
                     continue
+            else:
+                check_geom = geom
 
             result['total'] += 1
 
@@ -602,7 +601,7 @@ class CDETCore:
 
             result['multi_target'] += snap_check['multi_target_count']
 
-            if geom_type == QgsWkbTypes.LineGeometry and spatial_mode in self.SEGMENT_OUTPUT_LINE_MODES:
+            if geom_type == QgsWkbTypes.GeometryType.LineGeometry and spatial_mode in self.SEGMENT_OUTPUT_LINE_MODES:
                 if spatial_mode == 'll_adjacent_seg_any_and_near' and not snap_check['is_snapped']:
                     # “任一段且近距”未通过时，整条线各段都按未命中处理（避免与模式定义不一致）。
                     seg_flags = [False] * len(self._line_segments_xy(check_geom))
@@ -653,7 +652,7 @@ class CDETCore:
                     main_features.append(new_feat)
 
         if main_features:
-            main_layer.dataProvider().addFeatures(main_features)
+            add_features_fast(main_layer, main_features)
             apply_memory_output_style(main_layer)
             add_layer_to_output_tree(self.project, main_layer)
             result['layers_created'].append(main_layer.name())
@@ -692,7 +691,7 @@ class CDETCore:
                 )
             ]
         if spatial_mode in AGGREGATE_LINE_POINT_MODES:
-            if tg.type() != QgsWkbTypes.LineGeometry:
+            if tg.type() != QgsWkbTypes.GeometryType.LineGeometry:
                 return result
             rpg = ref_point_geoms_from_candidates(ref_entries, cand_list)
             mp = getattr(self, '_mode_param', None)
@@ -702,7 +701,7 @@ class CDETCore:
                 result['multi_target_count'] = max(0, n_pts - 1)
             return result
         if spatial_mode == PP_KTH_NEAREST_MODE:
-            if tg.type() != QgsWkbTypes.PointGeometry:
+            if tg.type() != QgsWkbTypes.GeometryType.PointGeometry:
                 return result
             pick = _pp_kth_nearest_pick(
                 tg, ref_entries, cand_list, tol,
@@ -726,9 +725,9 @@ class CDETCore:
 
     def _create_memory_layer(self, name, geom_type, crs, fields):
         type_map = {
-            QgsWkbTypes.PointGeometry: 'Point',
-            QgsWkbTypes.LineGeometry: 'LineString',
-            QgsWkbTypes.PolygonGeometry: 'Polygon'
+            QgsWkbTypes.GeometryType.PointGeometry: 'Point',
+            QgsWkbTypes.GeometryType.LineGeometry: 'LineString',
+            QgsWkbTypes.GeometryType.PolygonGeometry: 'Polygon'
         }
         type_str = type_map.get(geom_type, 'Point')
         uri = f'{type_str}?crs={crs.authid()}'

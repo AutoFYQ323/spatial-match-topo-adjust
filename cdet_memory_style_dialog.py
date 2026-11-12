@@ -91,7 +91,7 @@ class CdetMemoryStyleDialog(QDialog):
         self.btn_restore_defaults.clicked.connect(self._on_restore_defaults)
         row_bt.addWidget(self.btn_restore_defaults)
         row_bt.addStretch()
-        bbox = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        bbox = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         localize_button_box(bbox)
         row_bt.addWidget(bbox)
         root.addLayout(row_bt)
@@ -211,7 +211,7 @@ class CdetMemoryStyleDialog(QDialog):
             self._pt_fill,
             self,
             self.tr('填充颜色'),
-            QColorDialog.ShowAlphaChannel,
+            QColorDialog.ColorDialogOption.ShowAlphaChannel,
         )
         if c.isValid():
             self._pt_fill = c
@@ -230,7 +230,7 @@ class CdetMemoryStyleDialog(QDialog):
             self._pt_outline,
             self,
             self.tr('描边颜色'),
-            QColorDialog.ShowAlphaChannel,
+            QColorDialog.ColorDialogOption.ShowAlphaChannel,
         )
         if c.isValid():
             self._pt_outline = c
@@ -241,7 +241,7 @@ class CdetMemoryStyleDialog(QDialog):
             self._ln_color,
             self,
             self.tr('线颜色'),
-            QColorDialog.ShowAlphaChannel,
+            QColorDialog.ColorDialogOption.ShowAlphaChannel,
         )
         if c.isValid():
             self._ln_color = c

@@ -13,11 +13,11 @@ try:
 except Exception:
     Qt = None
 
-ROLE_LAYER_ID = (Qt.UserRole + 21) if Qt is not None else 293
-ROLE_LAYER_NAME = (Qt.UserRole + 22) if Qt is not None else 294
-ROLE_HAS_CATS = (Qt.UserRole + 23) if Qt is not None else 295
-ROLE_CATS = (Qt.UserRole + 24) if Qt is not None else 296
-ROLE_FEATURE_COUNT = (Qt.UserRole + 25) if Qt is not None else 297
+ROLE_LAYER_ID = (Qt.ItemDataRole.UserRole + 21) if Qt is not None else 293
+ROLE_LAYER_NAME = (Qt.ItemDataRole.UserRole + 22) if Qt is not None else 294
+ROLE_HAS_CATS = (Qt.ItemDataRole.UserRole + 23) if Qt is not None else 295
+ROLE_CATS = (Qt.ItemDataRole.UserRole + 24) if Qt is not None else 296
+ROLE_FEATURE_COUNT = (Qt.ItemDataRole.UserRole + 25) if Qt is not None else 297
 
 MAX_CATEGORIES = 400
 CAT_MARK = '◆◆'
@@ -79,8 +79,8 @@ def count_features_by_expr(layer, expr):
         req = QgsFeatureRequest()
         req.setFilterExpression(text)
         try:
-            req.setFlags(QgsFeatureRequest.NoGeometry)
-        except Exception:
+            req.setFlags(QgsFeatureRequest.Flag.NoGeometry)
+        except Exception:  # nosec B110
             pass
         n = 0
         for _feat in layer.getFeatures(req):
@@ -159,7 +159,7 @@ def _field_names(layer):
     try:
         for field in layer.fields():
             names.add(field.name())
-    except Exception:
+    except Exception:  # nosec B110
         pass
     return names
 
@@ -210,7 +210,7 @@ def _from_categorized(layer, renderer):
             break
         try:
             value = cat.value()
-        except Exception:
+        except Exception:  # nosec B112
             continue
         if _is_blank_value(value):
             continue
@@ -248,7 +248,7 @@ def _walk_rules(rule, items, inherited, seen, depth):
     try:
         if hasattr(rule, 'isElse') and rule.isElse():
             return
-    except Exception:
+    except Exception:  # nosec B110
         pass
     expr = ''
     try:
@@ -334,13 +334,15 @@ def filters_by_layer_id(layers, by_name):
     return out
 
 
-def iter_features(layer, filters_by_id=None):
-    """有筛选表达式时只迭代命中分类；没有则整层。"""
+def iter_features(layer, filters_by_id=None, request=None):
+    """有筛选表达式时只迭代命中分类；没有则整层。
+
+    request 可带「只读几何 / 只读部分字段」。分类条件会写进同一条请求。
+    """
+    req = QgsFeatureRequest(request) if request is not None else QgsFeatureRequest()
     exprs = None
     if filters_by_id and layer is not None:
         exprs = filters_by_id.get(layer.id())
-    if not exprs:
-        return layer.getFeatures()
-    req = QgsFeatureRequest()
-    req.setFilterExpression(' OR '.join('(%s)' % e for e in exprs))
+    if exprs:
+        req.setFilterExpression(' OR '.join('(%s)' % e for e in exprs))
     return layer.getFeatures(req)

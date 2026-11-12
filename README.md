@@ -22,7 +22,7 @@ Restart QGIS. The menu name follows the interface language. In English it is **S
 2. **Field naming.** Write a value from a nearby reference feature onto the source layer, or into a temporary layer. A multi-match rule decides what happens when more than one reference feature qualifies.
 3. **Move.** Preview a translation of whole features, then write it back only after you confirm.
 
-The two layer lists on the left are equal width. Click a row to select it. Click that row again to clear only that row. Drag with the left button to add every row the pointer crosses. Clicking empty space does not clear the selection. Refresh clears the selection and reloads the lists. A ◆◆ mark opens category filters for that layer.
+The two layer lists on the left are equal width. Without Ctrl, the row you click is the only selection, and clicking it again does not clear it. Ctrl adds or removes one row, Shift selects a range, and dragging selects the rows you cross. Clicking empty space does not clear the selection. Refresh clears the selection and reloads the lists. A ◆◆ mark opens category filters for that layer and does not change the selection. The special-check list follows the target layers only. A check that does not use a reference layer clears the reference selection and disables that list until you pick Standard or a check that needs a reference. The cleared selection is not restored.
 
 Batch schemes for the three tools are stored separately. Import and export are on the top bar in every mode. A bundle can hold all three libraries. Older single-tool files can still be imported.
 

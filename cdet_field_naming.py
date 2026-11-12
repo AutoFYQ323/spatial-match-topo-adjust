@@ -14,6 +14,7 @@ from qgis.core import (
     QgsVectorLayer,
     QgsWkbTypes,
     QgsCoordinateTransform,
+    QgsFeatureRequest,
 )
 
 try:
@@ -22,7 +23,11 @@ except ImportError:
     from cdet_category import iter_features
 from .i18n import tr as _i18n_tr
 from .errors import NO_REF_FEATURES as ERR_NO_REF_FEATURES
-from .qtutil import run_dialog, run_menu, qvariant_type, qtype_is, is_null_qvariant, AppMessageBox as QMessageBox
+from .qtutil import (
+    run_dialog, run_menu, qvariant_type, qtype_is, is_null_qvariant,
+    add_features_fast, add_index_features, tick_progress,
+    AppMessageBox as QMessageBox,
+)
 
 LAYER_NAME_VALUE = '\x00__cdet_layer_name__\x00'
 LAYER_NAME_SETTINGS_KEY = '__cdet_layer_title__'
@@ -97,12 +102,12 @@ def apply_element_count_rule(count_int, rule):
 
 def _geom_kind(wkb_type):
     gt = QgsWkbTypes.geometryType(wkb_type)
-    if gt == QgsWkbTypes.PointGeometry:
-        return QgsWkbTypes.PointGeometry
-    if gt == QgsWkbTypes.LineGeometry:
-        return QgsWkbTypes.LineGeometry
-    if gt == QgsWkbTypes.PolygonGeometry:
-        return QgsWkbTypes.PolygonGeometry
+    if gt == QgsWkbTypes.GeometryType.PointGeometry:
+        return QgsWkbTypes.GeometryType.PointGeometry
+    if gt == QgsWkbTypes.GeometryType.LineGeometry:
+        return QgsWkbTypes.GeometryType.LineGeometry
+    if gt == QgsWkbTypes.GeometryType.PolygonGeometry:
+        return QgsWkbTypes.GeometryType.PolygonGeometry
     return None
 
 
@@ -110,9 +115,9 @@ def _layer_geom_class(lyr):
     """判定矢量图层点/线/面类别：优先 geometryType()，避免仅用 wkbType 时出现 Unknown 导致只能退回「通用」模式。"""
     try:
         g = lyr.geometryType()
-        if g in (QgsWkbTypes.PointGeometry, QgsWkbTypes.LineGeometry, QgsWkbTypes.PolygonGeometry):
+        if g in (QgsWkbTypes.GeometryType.PointGeometry, QgsWkbTypes.GeometryType.LineGeometry, QgsWkbTypes.GeometryType.PolygonGeometry):
             return g
-    except Exception:
+    except Exception:  # nosec B110
         pass
     return _geom_kind(lyr.wkbType())
 
@@ -191,7 +196,7 @@ def format_mode_param(code, value):
 def _segment_endpoints_per_part(line_geom):
     """每条折线段的 (起点, 终点)；多点/多部件逐段判断。"""
     out = []
-    if line_geom.type() != QgsWkbTypes.LineGeometry:
+    if line_geom.type() != QgsWkbTypes.GeometryType.LineGeometry:
         return out
     if line_geom.isMultipart():
         for part in line_geom.asMultiPolyline():
@@ -207,7 +212,7 @@ def _segment_endpoints_per_part(line_geom):
 def _line_all_vertices_xy(line_geom):
     """折线全部顶点（多端线/part 順序罗列）。"""
     out = []
-    if line_geom.type() != QgsWkbTypes.LineGeometry:
+    if line_geom.type() != QgsWkbTypes.GeometryType.LineGeometry:
         return out
     if line_geom.isMultipart():
         for part in line_geom.asMultiPolyline():
@@ -220,7 +225,7 @@ def _line_all_vertices_xy(line_geom):
 def _line_adjacent_segments_xy(line_geom):
     """折线按相邻顶点拆分为线段：(v[i], v[i+1])。"""
     out = []
-    if line_geom.type() != QgsWkbTypes.LineGeometry:
+    if line_geom.type() != QgsWkbTypes.GeometryType.LineGeometry:
         return out
     parts = line_geom.asMultiPolyline() if line_geom.isMultipart() else [line_geom.asPolyline()]
     for part in parts:
@@ -273,7 +278,7 @@ def ref_point_geoms_from_candidates(ref_entries, cand_ids):
         if cid < 0 or cid >= len(ref_entries):
             continue
         g = ref_entries[cid]['geom']
-        if g.type() == QgsWkbTypes.PointGeometry:
+        if g.type() == QgsWkbTypes.GeometryType.PointGeometry:
             geoms.append(g)
     return geoms
 
@@ -354,9 +359,9 @@ _TIP_LG_ENDS = '端点＝线的起点和终点；多部件线把每个部件的�
 
 def _mode_tables():
     """几何组合 → [(code, 标题, 浮动说明)]。标题统一「【类别】一句话」，说明统一「判定 / 用途 / 注意」。"""
-    P = QgsWkbTypes.PointGeometry
-    L = QgsWkbTypes.LineGeometry
-    G = QgsWkbTypes.PolygonGeometry
+    P = QgsWkbTypes.GeometryType.PointGeometry
+    L = QgsWkbTypes.GeometryType.LineGeometry
+    G = QgsWkbTypes.GeometryType.PolygonGeometry
     # Late-bind tip fragments so a language switch does not freeze first-language text.
     _TIP_TOL_UNUSED = tr(globals()['_TIP_TOL_UNUSED'])
     _TIP_MULTI = tr(globals()['_TIP_MULTI'])
@@ -830,7 +835,7 @@ def _geom_distance(g1, g2):
         d = g1.distance(g2)
         if math.isfinite(d):
             return d
-    except Exception:
+    except Exception:  # nosec B110
         pass
     return float('inf')
 
@@ -848,7 +853,7 @@ def _pt_on_or_in_poly(pt_xy, poly_geom):
 
 
 def _line_all_endpoints(line_geom):
-    if line_geom.type() != QgsWkbTypes.LineGeometry:
+    if line_geom.type() != QgsWkbTypes.GeometryType.LineGeometry:
         return []
     out = []
     if line_geom.isMultipart():
@@ -869,7 +874,7 @@ def _line_all_endpoints(line_geom):
 
 
 def _line_internal_vertices_only(line_geom):
-    if line_geom.type() != QgsWkbTypes.LineGeometry:
+    if line_geom.type() != QgsWkbTypes.GeometryType.LineGeometry:
         return []
     out = []
     if line_geom.isMultipart():
@@ -884,7 +889,7 @@ def _line_internal_vertices_only(line_geom):
 
 
 def _line_all_vertices(line_geom):
-    if line_geom.type() != QgsWkbTypes.LineGeometry:
+    if line_geom.type() != QgsWkbTypes.GeometryType.LineGeometry:
         return []
     out = []
     if line_geom.isMultipart():
@@ -900,12 +905,13 @@ def _line_polygon_suffix_match(suffix, line_geom, poly_geom, tol):
         return _geom_distance(line_geom, poly_geom) <= tol
     if line_geom.isEmpty() or poly_geom.isEmpty():
         return False
-    if line_geom.type() != QgsWkbTypes.LineGeometry or poly_geom.type() != QgsWkbTypes.PolygonGeometry:
+    if line_geom.type() != QgsWkbTypes.GeometryType.LineGeometry or poly_geom.type() != QgsWkbTypes.GeometryType.PolygonGeometry:
         return False
     eps = _line_all_endpoints(line_geom)
     verts = _line_all_vertices(line_geom)
     internals = _line_internal_vertices_only(line_geom)
-    pin = lambda p: _pt_on_or_in_poly(p, poly_geom)
+    def pin(p):
+        return _pt_on_or_in_poly(p, poly_geom)
     wi = line_geom.within(poly_geom)
     ix = line_geom.intersects(poly_geom)
     n_ep_in = sum(1 for p in eps if pin(p))
@@ -955,7 +961,7 @@ def point_hits_line(pt_geom, line_geom, tol, attach=COUNT_ATTACH_ENDPOINT):
         return False
     if pt_geom.isEmpty() or line_geom.isEmpty() or tol < 0:
         return False
-    if pt_geom.type() != QgsWkbTypes.PointGeometry or line_geom.type() != QgsWkbTypes.LineGeometry:
+    if pt_geom.type() != QgsWkbTypes.GeometryType.PointGeometry or line_geom.type() != QgsWkbTypes.GeometryType.LineGeometry:
         return False
     kind = normalize_count_attach(attach)
     if kind == COUNT_ATTACH_ENDPOINT:
@@ -972,7 +978,7 @@ def point_hits_line(pt_geom, line_geom, tol, attach=COUNT_ATTACH_ENDPOINT):
 def _pl_point_at_ref_line_endpoints(pt_geom, line_geom, tol):
     if pt_geom.isEmpty() or line_geom.isEmpty():
         return False
-    if pt_geom.type() != QgsWkbTypes.PointGeometry or line_geom.type() != QgsWkbTypes.LineGeometry:
+    if pt_geom.type() != QgsWkbTypes.GeometryType.PointGeometry or line_geom.type() != QgsWkbTypes.GeometryType.LineGeometry:
         return False
     for a, b in _segment_endpoints_per_part(line_geom):
         da = _geom_distance(pt_geom, QgsGeometry.fromPointXY(a))
@@ -985,7 +991,7 @@ def _pl_point_at_ref_line_endpoints(pt_geom, line_geom, tol):
 def _pl_point_at_ref_line_inner_vertex(pt_geom, line_geom, tol):
     if pt_geom.isEmpty() or line_geom.isEmpty():
         return False
-    if pt_geom.type() != QgsWkbTypes.PointGeometry or line_geom.type() != QgsWkbTypes.LineGeometry:
+    if pt_geom.type() != QgsWkbTypes.GeometryType.PointGeometry or line_geom.type() != QgsWkbTypes.GeometryType.LineGeometry:
         return False
     if _pl_point_at_ref_line_endpoints(pt_geom, line_geom, tol):
         return False
@@ -1009,7 +1015,7 @@ def _pp_kth_nearest_pick(point_geom, ref_entries, cand_ids, tol, k):
             continue
         e = ref_entries[cid]
         g = e.get('geom')
-        if g is None or g.isEmpty() or g.type() != QgsWkbTypes.PointGeometry:
+        if g is None or g.isEmpty() or g.type() != QgsWkbTypes.GeometryType.PointGeometry:
             continue
         d = _geom_distance(point_geom, g)
         if not math.isfinite(d):
@@ -1032,7 +1038,7 @@ def aggregate_line_point_field_hits(mode, line_geom, ref_entries, cand_ids, tol,
         if cid < 0 or cid >= len(ref_entries):
             continue
         e = ref_entries[cid]
-        if e['geom'].type() != QgsWkbTypes.PointGeometry:
+        if e['geom'].type() != QgsWkbTypes.GeometryType.PointGeometry:
             continue
         pts_entries.append(e)
     geoms = [e['geom'] for e in pts_entries]
@@ -1083,7 +1089,7 @@ def count_aggregate_line_point_matches(line_geom, ref_entries, cand_ids, tol, mo
         if cid < 0 or cid >= len(ref_entries):
             continue
         e = ref_entries[cid]
-        if e['geom'].type() != QgsWkbTypes.PointGeometry:
+        if e['geom'].type() != QgsWkbTypes.GeometryType.PointGeometry:
             continue
         g = e['geom']
         hit = False
@@ -1112,7 +1118,7 @@ def _geom_almost_equals(g1, g2, tol):
     try:
         if g1.equals(g2):
             return True
-    except Exception:
+    except Exception:  # nosec B110
         pass
     if tol <= 0:
         return False
@@ -1134,16 +1140,16 @@ def _line_intersection_length(g1, g2):
         xi = g1.intersection(g2)
         if xi.isEmpty():
             return 0.0
-        if xi.type() == QgsWkbTypes.LineGeometry:
+        if xi.type() == QgsWkbTypes.GeometryType.LineGeometry:
             return float(xi.length())
         if xi.isMultipart():
             try:
                 acc = 0.0
                 for part in xi.asGeometryCollection():
-                    if part.type() == QgsWkbTypes.LineGeometry:
+                    if part.type() == QgsWkbTypes.GeometryType.LineGeometry:
                         acc += float(part.length())
                 return acc
-            except Exception:
+            except Exception:  # nosec B110
                 pass
         return 0.0
     except Exception:
@@ -1155,7 +1161,7 @@ def _polygon_area(g):
         a = float(g.area())
         if math.isfinite(a):
             return abs(a)
-    except Exception:
+    except Exception:  # nosec B110
         pass
     return 0.0
 
@@ -1167,13 +1173,13 @@ def _polygon_intersection_area(g1, g2):
         xi = g1.intersection(g2)
         if xi.isEmpty():
             return 0.0
-        if xi.type() == QgsWkbTypes.PolygonGeometry:
+        if xi.type() == QgsWkbTypes.GeometryType.PolygonGeometry:
             return _polygon_area(xi)
         if xi.isMultipart():
             try:
                 acc = 0.0
                 for part in xi.asGeometryCollection():
-                    if part.type() == QgsWkbTypes.PolygonGeometry:
+                    if part.type() == QgsWkbTypes.GeometryType.PolygonGeometry:
                         acc += _polygon_area(part)
                 return acc
             except Exception:
@@ -1190,7 +1196,7 @@ def _safe_buffer(g, d):
         b = g.buffer(d, 8)
         if b and not b.isEmpty():
             return b
-    except Exception:
+    except Exception:  # nosec B110
         pass
     return None
 
@@ -1231,7 +1237,7 @@ def _inner_point(g):
         p = g.pointOnSurface()
         if p is not None and not p.isEmpty():
             return p
-    except Exception:
+    except Exception:  # nosec B110
         pass
     return None
 
@@ -1249,12 +1255,12 @@ def _v2_mode_ok(mode, tg, rg, tol, param=None):
     t_type = tg.type()
     r_type = rg.type()
     if mode in ('lp_head_on_pt', 'lp_tail_on_pt'):
-        if t_type != QgsWkbTypes.LineGeometry:
+        if t_type != QgsWkbTypes.GeometryType.LineGeometry:
             return False
         head, tail = line_head_tail_xy(tg)
         return _xy_within(head if mode == 'lp_head_on_pt' else tail, rg, tol)
     if mode in ('ll_end_to_end', 'll_end_on_body', 'll_buffer_length_ratio'):
-        if t_type != QgsWkbTypes.LineGeometry or r_type != QgsWkbTypes.LineGeometry:
+        if t_type != QgsWkbTypes.GeometryType.LineGeometry or r_type != QgsWkbTypes.GeometryType.LineGeometry:
             return False
         if mode == 'll_buffer_length_ratio':
             try:
@@ -1276,7 +1282,7 @@ def _v2_mode_ok(mode, tg, rg, tol, param=None):
                 return True
         return False
     if mode == 'lg_midpoint_in':
-        if t_type != QgsWkbTypes.LineGeometry or r_type != QgsWkbTypes.PolygonGeometry:
+        if t_type != QgsWkbTypes.GeometryType.LineGeometry or r_type != QgsWkbTypes.GeometryType.PolygonGeometry:
             return False
         try:
             mid = tg.interpolate(float(tg.length()) * 0.5)
@@ -1286,7 +1292,7 @@ def _v2_mode_ok(mode, tg, rg, tol, param=None):
             return False
         return rg.intersects(mid)
     if mode in ('gg_inner_point_in', 'gg_ref_inner_point_in', 'gg_shared_edge'):
-        if t_type != QgsWkbTypes.PolygonGeometry or r_type != QgsWkbTypes.PolygonGeometry:
+        if t_type != QgsWkbTypes.GeometryType.PolygonGeometry or r_type != QgsWkbTypes.GeometryType.PolygonGeometry:
             return False
         if mode == 'gg_inner_point_in':
             p = _inner_point(tg)
@@ -1320,15 +1326,15 @@ def _mode_ok(mode, tg, rg, tol, param=None):
     if mode == 'pl_tol':
         return dist <= tol
     if mode == 'pl_on_line':
-        if rg.type() != QgsWkbTypes.LineGeometry:
+        if rg.type() != QgsWkbTypes.GeometryType.LineGeometry:
             return False
         return dist <= tol
     if mode == 'pl_at_ref_line_endpoints':
-        if rg.type() != QgsWkbTypes.LineGeometry:
+        if rg.type() != QgsWkbTypes.GeometryType.LineGeometry:
             return False
         return _pl_point_at_ref_line_endpoints(tg, rg, tol)
     if mode == 'pl_at_ref_line_endpoint_only':
-        if rg.type() != QgsWkbTypes.LineGeometry:
+        if rg.type() != QgsWkbTypes.GeometryType.LineGeometry:
             return False
         if not _pl_point_at_ref_line_endpoints(tg, rg, tol):
             return False
@@ -1337,7 +1343,7 @@ def _mode_ok(mode, tg, rg, tol, param=None):
                 return False
         return True
     if mode == 'pl_at_ref_line_inner_vertex':
-        if rg.type() != QgsWkbTypes.LineGeometry:
+        if rg.type() != QgsWkbTypes.GeometryType.LineGeometry:
             return False
         return _pl_point_at_ref_line_inner_vertex(tg, rg, tol)
     if mode == 'pg_within':
@@ -1354,7 +1360,7 @@ def _mode_ok(mode, tg, rg, tol, param=None):
             return True
         return dist <= tol
     if mode == 'pg_min_distance_to_boundary':
-        if rg.type() != QgsWkbTypes.PolygonGeometry:
+        if rg.type() != QgsWkbTypes.GeometryType.PolygonGeometry:
             return False
         bnd = _boundary_of(rg)
         if bnd is None:
@@ -1363,7 +1369,7 @@ def _mode_ok(mode, tg, rg, tol, param=None):
     if mode == 'pp_kth_nearest':
         return False
     if mode == 'lp_endpoint':
-        if tg.type() != QgsWkbTypes.LineGeometry:
+        if tg.type() != QgsWkbTypes.GeometryType.LineGeometry:
             return False
         pts = []
         if tg.isMultipart():
@@ -1379,7 +1385,7 @@ def _mode_ok(mode, tg, rg, tol, param=None):
                 return True
         return False
     if mode == 'lp_any_vertex':
-        if tg.type() != QgsWkbTypes.LineGeometry:
+        if tg.type() != QgsWkbTypes.GeometryType.LineGeometry:
             return False
         for v in _line_all_vertices_xy(tg):
             if _geom_distance(QgsGeometry.fromPointXY(v), rg) <= tol:
@@ -1400,7 +1406,7 @@ def _mode_ok(mode, tg, rg, tol, param=None):
     if mode == 'll_near':
         return dist <= tol
     if mode == 'll_length_ratio':
-        if tg.type() != QgsWkbTypes.LineGeometry or rg.type() != QgsWkbTypes.LineGeometry:
+        if tg.type() != QgsWkbTypes.GeometryType.LineGeometry or rg.type() != QgsWkbTypes.GeometryType.LineGeometry:
             return False
         try:
             tlen = float(tg.length())
@@ -1411,7 +1417,7 @@ def _mode_ok(mode, tg, rg, tol, param=None):
         inter_len = _line_intersection_length(tg, rg)
         return (inter_len / tlen) * 100.0 >= mode_param_value(mode, param)
     if mode == 'll_buffer_overlap':
-        if tg.type() != QgsWkbTypes.LineGeometry or rg.type() != QgsWkbTypes.LineGeometry:
+        if tg.type() != QgsWkbTypes.GeometryType.LineGeometry or rg.type() != QgsWkbTypes.GeometryType.LineGeometry:
             return False
         if tg.intersects(rg):
             return True
@@ -1431,7 +1437,7 @@ def _mode_ok(mode, tg, rg, tol, param=None):
         'll_adjacent_seg_ratio',
         'll_adjacent_seg_any_and_near',
     ):
-        if tg.type() != QgsWkbTypes.LineGeometry or rg.type() != QgsWkbTypes.LineGeometry:
+        if tg.type() != QgsWkbTypes.GeometryType.LineGeometry or rg.type() != QgsWkbTypes.GeometryType.LineGeometry:
             return False
         mc, tc, ml, tl = _line_adjacent_segment_stats(tg, rg, tol)
         if tc <= 0:
@@ -1446,7 +1452,7 @@ def _mode_ok(mode, tg, rg, tol, param=None):
             return (ml / tl) * 100.0 >= mode_param_value(mode, param)
         return (mc > 0) and (dist <= tol)
     if mode == 'lg_inside_length_ratio':
-        if tg.type() != QgsWkbTypes.LineGeometry or rg.type() != QgsWkbTypes.PolygonGeometry:
+        if tg.type() != QgsWkbTypes.GeometryType.LineGeometry or rg.type() != QgsWkbTypes.GeometryType.PolygonGeometry:
             return False
         try:
             tlen = float(tg.length())
@@ -1457,7 +1463,7 @@ def _mode_ok(mode, tg, rg, tol, param=None):
         inter_len = _line_intersection_length(tg, rg)
         return (inter_len / tlen) * 100.0 >= mode_param_value(mode, param)
     if mode == 'gl_inside_length_ratio':
-        if tg.type() != QgsWkbTypes.PolygonGeometry or rg.type() != QgsWkbTypes.LineGeometry:
+        if tg.type() != QgsWkbTypes.GeometryType.PolygonGeometry or rg.type() != QgsWkbTypes.GeometryType.LineGeometry:
             return False
         try:
             rlen = float(rg.length())
@@ -1467,9 +1473,9 @@ def _mode_ok(mode, tg, rg, tol, param=None):
             return False
         inter_len = _line_intersection_length(rg, tg)
         return (inter_len / rlen) * 100.0 >= mode_param_value(mode, param)
-    if mode.startswith('lg_') and tg.type() == QgsWkbTypes.LineGeometry and rg.type() == QgsWkbTypes.PolygonGeometry:
+    if mode.startswith('lg_') and tg.type() == QgsWkbTypes.GeometryType.LineGeometry and rg.type() == QgsWkbTypes.GeometryType.PolygonGeometry:
         return _line_polygon_suffix_match(mode[3:], tg, rg, tol)
-    if mode.startswith('gl_') and tg.type() == QgsWkbTypes.PolygonGeometry and rg.type() == QgsWkbTypes.LineGeometry:
+    if mode.startswith('gl_') and tg.type() == QgsWkbTypes.GeometryType.PolygonGeometry and rg.type() == QgsWkbTypes.GeometryType.LineGeometry:
         return _line_polygon_suffix_match(mode[3:], rg, tg, tol)
     if mode == 'gp_contains':
         return tg.contains(rg)
@@ -1480,7 +1486,7 @@ def _mode_ok(mode, tg, rg, tol, param=None):
     if mode == 'gp_near':
         return dist <= tol
     if mode == 'gp_count_inside':
-        if tg.type() != QgsWkbTypes.PolygonGeometry or rg.type() != QgsWkbTypes.PointGeometry:
+        if tg.type() != QgsWkbTypes.GeometryType.PolygonGeometry or rg.type() != QgsWkbTypes.GeometryType.PointGeometry:
             return False
         try:
             return tg.intersects(rg)
@@ -1503,7 +1509,7 @@ def _mode_ok(mode, tg, rg, tol, param=None):
     if mode == 'gg_near':
         return dist <= tol
     if mode == 'gg_overlap_area_ratio':
-        if tg.type() != QgsWkbTypes.PolygonGeometry or rg.type() != QgsWkbTypes.PolygonGeometry:
+        if tg.type() != QgsWkbTypes.GeometryType.PolygonGeometry or rg.type() != QgsWkbTypes.GeometryType.PolygonGeometry:
             return False
         ta = _polygon_area(tg)
         if ta <= 0:
@@ -1511,12 +1517,12 @@ def _mode_ok(mode, tg, rg, tol, param=None):
         ia = _polygon_intersection_area(tg, rg)
         return (ia / ta) * 100.0 >= mode_param_value(mode, param)
     if mode == 'gg_buffer_inside':
-        if tg.type() != QgsWkbTypes.PolygonGeometry or rg.type() != QgsWkbTypes.PolygonGeometry:
+        if tg.type() != QgsWkbTypes.GeometryType.PolygonGeometry or rg.type() != QgsWkbTypes.GeometryType.PolygonGeometry:
             return False
         try:
             if rg.contains(tg):
                 return True
-        except Exception:
+        except Exception:  # nosec B110
             pass
         if tol <= 0:
             return False
@@ -1695,7 +1701,7 @@ def _is_blank(v):
     try:
         if is_null_qvariant(v):
             return True
-    except Exception:
+    except Exception:  # nosec B110
         pass
     return str(v).strip() in ('', 'NULL')
 
@@ -1704,13 +1710,13 @@ def _overlap_measure(tg, rg, tol):
     """largest_overlap 用：面-面取重叠面积，线参与取重叠长度；点参与返回 None。"""
     t_type = tg.type()
     r_type = rg.type()
-    if QgsWkbTypes.PointGeometry in (t_type, r_type):
+    if QgsWkbTypes.GeometryType.PointGeometry in (t_type, r_type):
         return None
-    if t_type == QgsWkbTypes.PolygonGeometry and r_type == QgsWkbTypes.PolygonGeometry:
+    if t_type == QgsWkbTypes.GeometryType.PolygonGeometry and r_type == QgsWkbTypes.GeometryType.PolygonGeometry:
         return _polygon_intersection_area(tg, rg)
-    if t_type == QgsWkbTypes.LineGeometry and r_type == QgsWkbTypes.PolygonGeometry:
+    if t_type == QgsWkbTypes.GeometryType.LineGeometry and r_type == QgsWkbTypes.GeometryType.PolygonGeometry:
         return _line_intersection_length(tg, rg)
-    if t_type == QgsWkbTypes.PolygonGeometry and r_type == QgsWkbTypes.LineGeometry:
+    if t_type == QgsWkbTypes.GeometryType.PolygonGeometry and r_type == QgsWkbTypes.GeometryType.LineGeometry:
         return _line_intersection_length(rg, tg)
     return _line_len_within_buffer(tg, rg, tol)
 
@@ -1803,7 +1809,7 @@ def _check_crs(_iface, project, named_layers, ref_layers):
 
 def line_head_tail_xy(line_geom):
     """线要素的头、尾。多部件：第一个部件的起点，最后一个部件的终点。"""
-    if line_geom is None or line_geom.isEmpty() or line_geom.type() != QgsWkbTypes.LineGeometry:
+    if line_geom is None or line_geom.isEmpty() or line_geom.type() != QgsWkbTypes.GeometryType.LineGeometry:
         return None, None
     if line_geom.isMultipart():
         parts = [p for p in (line_geom.asMultiPolyline() or []) if p]
@@ -1826,7 +1832,7 @@ def _hits_at_vertex(pt_xy, ref_entries, cand_ids, tol, ref_source):
             continue
         e = ref_entries[cid]
         g = e.get('geom')
-        if g is None or g.isEmpty() or g.type() != QgsWkbTypes.PointGeometry:
+        if g is None or g.isEmpty() or g.type() != QgsWkbTypes.GeometryType.PointGeometry:
             continue
         dist = _geom_distance(ptg, g)
         if dist <= tol:
@@ -1861,34 +1867,60 @@ def _end_field_updates(line_geom, ref_entries, cand_ids, tol, end_plan, multi_st
     return updates, written, multi
 
 
-def _build_ref_state(ref_layers, base_crs, project, category_filters=None):
+def _build_ref_state(ref_layers, base_crs, project, category_filters=None, geometry_only=False, attribute_names=None):
+    """参考要素进空间索引。
+
+    geometry_only 时不读属性（吸附、移动）。attribute_names 只读命名要用的字段。
+    有分类条件时仍读全部字段，避免筛选表达式用到没读出来的列。
+    """
     entries = []
+    names = [n for n in (attribute_names or []) if n]
     for layer in ref_layers:
         xf = None
         if layer.crs() != base_crs:
             xf = QgsCoordinateTransform(layer.crs(), base_crs, project)
-        for feat in iter_features(layer, category_filters):
+        has_filter = bool(category_filters and category_filters.get(layer.id()))
+        req = None
+        if not has_filter and (geometry_only or names):
+            req = QgsFeatureRequest()
+            if geometry_only:
+                req.setSubsetOfAttributes([])
+            else:
+                idxs = []
+                for name in names:
+                    ix = layer.fields().indexOf(name)
+                    if ix >= 0:
+                        idxs.append(ix)
+                req.setSubsetOfAttributes(idxs)
+        for feat in iter_features(layer, category_filters, req):
             g = feat.geometry()
             if g.isEmpty():
                 continue
-            gb = QgsGeometry(g)
             if xf:
+                gb = QgsGeometry(g)
                 try:
                     gb.transform(xf)
-                except Exception:
+                except Exception:  # nosec B112
                     continue
-            entries.append({
+            else:
+                gb = g
+            item = {
                 'layer': layer,
                 'fid': feat.id(),
-                'feature': feat,
                 'geom': gb,
-            })
+            }
+            if not geometry_only:
+                item['feature'] = feat
+            entries.append(item)
     idx = QgsSpatialIndex()
+    feats = []
     for i, e in enumerate(entries):
-        f = QgsFeature(i)
+        f = QgsFeature()
+        f.setId(i)
         f.setGeometry(e['geom'])
-        idx.addFeature(f)
+        feats.append(f)
         e['_ix'] = i
+    add_index_features(idx, feats)
     return entries, idx
 
 
@@ -1906,9 +1938,9 @@ def _unique_project_layer_name(project, base_name):
 def _create_memory_clone(base_layer, name_suffix, project=None):
     gt = base_layer.geometryType()
     type_map = {
-        QgsWkbTypes.PointGeometry: 'Point',
-        QgsWkbTypes.LineGeometry: 'LineString',
-        QgsWkbTypes.PolygonGeometry: 'Polygon',
+        QgsWkbTypes.GeometryType.PointGeometry: 'Point',
+        QgsWkbTypes.GeometryType.LineGeometry: 'LineString',
+        QgsWkbTypes.GeometryType.PolygonGeometry: 'Polygon',
     }
     type_str = type_map.get(gt, 'Point')
     uri = f'{type_str}?crs={base_layer.crs().authid()}'
@@ -1945,6 +1977,66 @@ def _end_specs_from_params(params, named_layers, ref_layers):
     if not specs:
         return None, tr('请至少填写线头或线尾的一组字段')
     return specs, ''
+
+
+def _commit_attribute_batch(layer, batch_map, single_index):
+    """一次写入。batch_map 的值是单个字段值，或 {字段序号: 值}。"""
+    if not batch_map:
+        return True, ''
+    changes = {}
+    for fid, val in batch_map.items():
+        if isinstance(val, dict):
+            changes[fid] = dict(val)
+        else:
+            changes[fid] = {single_index: val}
+
+    def _via_edit_buffer():
+        if not layer.isEditable() and not layer.startEditing():
+            return False, 'edit'
+        layer.blockSignals(True)
+        ok = True
+        try:
+            for fid, amap in changes.items():
+                for idx, one in amap.items():
+                    if not layer.changeAttributeValue(fid, idx, one):
+                        ok = False
+                        break
+                if not ok:
+                    break
+        finally:
+            layer.blockSignals(False)
+        if not ok:
+            try:
+                layer.rollBack()
+            except Exception:  # nosec B110
+                pass
+            return False, 'attr'
+        if not layer.commitChanges():
+            try:
+                layer.rollBack()
+            except Exception:  # nosec B110
+                pass
+            return False, 'commit'
+        return True, ''
+
+    if layer.isEditable():
+        return _via_edit_buffer()
+    provider_ok = False
+    try:
+        provider_ok = bool(layer.dataProvider().changeAttributeValues(changes))
+    except Exception:
+        provider_ok = False
+    if not provider_ok:
+        return _via_edit_buffer()
+    try:
+        layer.triggerRepaint()
+    except Exception:  # nosec B110
+        pass
+    try:
+        layer.reload()
+    except Exception:  # nosec B110
+        pass
+    return True, ''
 
 
 def run_field_naming(iface, project, named_layers, ref_layers, params):
@@ -2018,15 +2110,23 @@ def run_field_naming(iface, project, named_layers, ref_layers, params):
             iface.mainWindow(),
             tr('坐标系警告'),
             crs_info['message'] + '\n\n' + tr('是否继续执行？'),
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
         )
-        if reply == QMessageBox.No:
+        if reply == QMessageBox.StandardButton.No:
             return _fail(tr('用户取消执行'))
     base_crs = named_layers[0].crs()
     cat_target = params.get('_category_target')
     cat_ref = params.get('_category_ref')
-    ref_entries, ref_idx = _build_ref_state(ref_layers, base_crs, project, cat_ref)
+    attr_names = []
+    if spatial_mode == LP_END_FIELDS:
+        for spec in end_specs:
+            attr_names.append(spec.get('ref_source'))
+    elif ref_source not in (LAYER_NAME_VALUE, REF_ELEMENT_COUNT, None, ''):
+        attr_names.append(ref_source)
+    ref_entries, ref_idx = _build_ref_state(
+        ref_layers, base_crs, project, cat_ref, attribute_names=attr_names,
+    )
     if not ref_entries:
         if not quiet:
             QMessageBox.information(iface.mainWindow(), tr('提示'), tr('参考图层无有效要素'))
@@ -2041,14 +2141,11 @@ def run_field_naming(iface, project, named_layers, ref_layers, params):
     progress = None
     if not quiet:
         progress = QProgressDialog(tr('正在处理...'), tr('取消'), 0, max(total, 1), iface.mainWindow())
-        progress.setWindowModality(Qt.WindowModal)
+        progress.setWindowModality(Qt.WindowModality.WindowModal)
         progress.setMinimumDuration(0)
 
     def _tick():
-        if progress is None:
-            return False
-        progress.setValue(min(done, total))
-        return progress.wasCanceled()
+        return tick_progress(progress, min(done, total) if total else done)
     done = 0
     written = 0
     skipped = 0
@@ -2092,7 +2189,11 @@ def run_field_naming(iface, project, named_layers, ref_layers, params):
             out_layer = _create_memory_clone(t_layer, tr('_字段命名'), project=project)
             out_feats = []
         layer_canceled = False
-        for feat in iter_features(t_layer, cat_target):
+        fast_req = None
+        if output_direct and not cat_target:
+            fast_req = QgsFeatureRequest()
+            fast_req.setSubsetOfAttributes([])
+        for feat in iter_features(t_layer, cat_target, fast_req):
             done += 1
             if _tick():
                 canceled = True
@@ -2101,8 +2202,8 @@ def run_field_naming(iface, project, named_layers, ref_layers, params):
             g = feat.geometry()
             if g.isEmpty():
                 continue
-            gb = QgsGeometry(g)
             if xf_to:
+                gb = QgsGeometry(g)
                 try:
                     gb.transform(xf_to)
                 except Exception:
@@ -2113,9 +2214,11 @@ def run_field_naming(iface, project, named_layers, ref_layers, params):
                         new_f.setGeometry(feat.geometry())
                         out_feats.append(new_f)
                     continue
+            else:
+                gb = g
             rect = _rect_grow(gb.boundingBox(), tolerance)
             cand_ids = ref_idx.intersects(rect)
-            attrs = list(feat.attributes())
+            attrs = None if output_direct else list(feat.attributes())
             if spatial_mode == LP_END_FIELDS:
                 updates, n_w, n_m = _end_field_updates(
                     gb, ref_entries, list(cand_ids), tolerance, end_plan, multi_strategy, join_sep,
@@ -2129,8 +2232,9 @@ def run_field_naming(iface, project, named_layers, ref_layers, params):
                         new_f.setGeometry(feat.geometry())
                         out_feats.append(new_f)
                     continue
-                for idx, val in updates.items():
-                    attrs[idx] = val
+                if not output_direct:
+                    for idx, val in updates.items():
+                        attrs[idx] = val
                 written += n_w
                 if output_direct:
                     batch_map[feat.id()] = updates
@@ -2142,7 +2246,7 @@ def run_field_naming(iface, project, named_layers, ref_layers, params):
                 continue
             if ref_source == REF_ELEMENT_COUNT:
                 cand_list = list(cand_ids)
-                if spatial_mode in AGGREGATE_LINE_POINT_MODES and gb.type() == QgsWkbTypes.LineGeometry:
+                if spatial_mode in AGGREGATE_LINE_POINT_MODES and gb.type() == QgsWkbTypes.GeometryType.LineGeometry:
                     cnt = count_aggregate_line_point_matches(
                         gb, ref_entries, cand_list, tolerance, spatial_mode, mode_param
                     )
@@ -2168,11 +2272,11 @@ def run_field_naming(iface, project, named_layers, ref_layers, params):
                 coerced = _coerce_for_field(raw_out, nf_def)
             else:
                 cand_list = list(cand_ids)
-                if spatial_mode in AGGREGATE_LINE_POINT_MODES and gb.type() == QgsWkbTypes.LineGeometry:
+                if spatial_mode in AGGREGATE_LINE_POINT_MODES and gb.type() == QgsWkbTypes.GeometryType.LineGeometry:
                     hits = aggregate_line_point_field_hits(
                         spatial_mode, gb, ref_entries, cand_list, tolerance, ref_source, mode_param
                     )
-                elif spatial_mode == PP_KTH_NEAREST_MODE and gb.type() == QgsWkbTypes.PointGeometry:
+                elif spatial_mode == PP_KTH_NEAREST_MODE and gb.type() == QgsWkbTypes.GeometryType.PointGeometry:
                     pick = _pp_kth_nearest_pick(
                         gb, ref_entries, cand_list, tolerance, int(mode_param_value(spatial_mode, mode_param))
                     )
@@ -2216,7 +2320,8 @@ def run_field_naming(iface, project, named_layers, ref_layers, params):
                     new_f.setGeometry(feat.geometry())
                     out_feats.append(new_f)
                 continue
-            attrs[nf_idx] = coerced
+            if not output_direct:
+                attrs[nf_idx] = coerced
             written += 1
             if output_direct:
                 batch_map[feat.id()] = coerced
@@ -2227,35 +2332,18 @@ def run_field_naming(iface, project, named_layers, ref_layers, params):
                 out_feats.append(new_f)
         if output_direct:
             if batch_map and not layer_canceled:
-                if not t_layer.startEditing():
-                    fail_msg = tr('无法进入编辑模式，请关闭其他占用该图层的操作后重试。')
+                write_ok, write_kind = _commit_attribute_batch(t_layer, batch_map, nf_idx)
+                if not write_ok:
+                    if write_kind == 'edit':
+                        fail_msg = tr('无法进入编辑模式，请关闭其他占用该图层的操作后重试。')
+                    elif write_kind == 'commit':
+                        fail_msg = tr('提交修改失败，已回滚。')
+                    else:
+                        fail_msg = tr('属性写入失败，已回滚。')
                     if not quiet:
                         QMessageBox.warning(iface.mainWindow(), tr('提示'), fail_msg)
-                else:
-                    write_ok = True
-                    for _fid, _val in batch_map.items():
-                        if spatial_mode == LP_END_FIELDS:
-                            for _idx, _one in _val.items():
-                                if not t_layer.changeAttributeValue(_fid, _idx, _one):
-                                    write_ok = False
-                                    break
-                            if not write_ok:
-                                break
-                        elif not t_layer.changeAttributeValue(_fid, nf_idx, _val):
-                            write_ok = False
-                            break
-                    if not write_ok:
-                        t_layer.rollBack()
-                        fail_msg = tr('属性写入失败，已回滚。')
-                        if not quiet:
-                            QMessageBox.warning(iface.mainWindow(), tr('提示'), fail_msg)
-                    elif not t_layer.commitChanges():
-                        t_layer.rollBack()
-                        fail_msg = tr('提交修改失败，已回滚。')
-                        if not quiet:
-                            QMessageBox.warning(iface.mainWindow(), tr('提示'), fail_msg)
         elif out_feats:
-            out_layer.dataProvider().addFeatures(out_feats)
+            add_features_fast(out_layer, out_feats)
             try:
                 from .cdet_memory_style import apply_memory_output_style
             except ImportError:

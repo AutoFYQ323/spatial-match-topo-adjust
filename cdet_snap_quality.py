@@ -99,7 +99,7 @@ def _make_da(crs, project):
     da.setSourceCrs(crs, project.transformContext())
     try:
         da.setEllipsoid(crs.ellipsoidAcronym())
-    except Exception:
+    except Exception:  # nosec B110
         pass
     return da
 
@@ -114,7 +114,7 @@ def _meters_to_map_units(meters, crs, ref_lat=0.0):
         c = max(math.cos(math.radians(max(-89.0, min(89.0, ref_lat)))), 0.05)
         return meters / (111320.0 * c)
     try:
-        f = QgsUnitTypes.fromUnitToUnitFactor(QgsUnitTypes.DistanceMeters, crs.mapUnits())
+        f = QgsUnitTypes.fromUnitToUnitFactor(QgsUnitTypes.DistanceUnit.DistanceMeters, crs.mapUnits())
     except Exception:
         f = 1.0
     return meters * f
@@ -216,7 +216,7 @@ def _endpoint_loops_back(pts, which, tol):
 
 
 def run_line_dangles_snap(iface, project, target_layers, params):
-    line_layers = _layers_of(target_layers, (QgsWkbTypes.LineGeometry,))
+    line_layers = _layers_of(target_layers, (QgsWkbTypes.GeometryType.LineGeometry,))
     if not line_layers:
         return _fail(iface, params, _tr('【拓扑】悬挂端点：请选择线图层'))
     tol = _tolerance(params)
@@ -224,10 +224,13 @@ def run_line_dangles_snap(iface, project, target_layers, params):
     base_crs = line_layers[0].crs()
     geoms, meta = _gather_lines_workspace(line_layers, base_crs, project, params.get('_category_target'))
     index = QgsSpatialIndex()
+    stubs = []
     for i, g in geoms.items():
         stub = QgsFeature(int(i))
         stub.setGeometry(g)
-        index.addFeature(stub)
+        stubs.append(stub)
+    from .qtutil import add_index_features
+    add_index_features(index, stubs)
 
     rows = []
     for i in sorted(geoms.keys()):
@@ -273,11 +276,11 @@ def _intersection_points(inter):
         return out
     try:
         parts = inter.asGeometryCollection() if inter.isMultipart() or \
-            QgsWkbTypes.flatType(inter.wkbType()) == QgsWkbTypes.GeometryCollection else [inter]
+            QgsWkbTypes.flatType(inter.wkbType()) == QgsWkbTypes.Type.GeometryCollection else [inter]
     except Exception:
         parts = [inter]
     for p in parts:
-        if p.type() != QgsWkbTypes.PointGeometry:
+        if p.type() != QgsWkbTypes.GeometryType.PointGeometry:
             continue
         if p.isMultipart():
             out.extend(QgsPointXY(q) for q in p.asMultiPoint())
@@ -291,7 +294,7 @@ def _has_vertex_near(parts, pt, tol):
 
 
 def run_line_cross_nonode_snap(iface, project, target_layers, params):
-    line_layers = _layers_of(target_layers, (QgsWkbTypes.LineGeometry,))
+    line_layers = _layers_of(target_layers, (QgsWkbTypes.GeometryType.LineGeometry,))
     if not line_layers:
         return _fail(iface, params, _tr('【拓扑】交叉未打断：请选择线图层'))
     tol = _tolerance(params)
@@ -308,7 +311,7 @@ def run_line_cross_nonode_snap(iface, project, target_layers, params):
             continue
         try:
             inter = geoms[i].intersection(geoms[j])
-        except Exception:
+        except Exception:  # nosec B112
             continue
         seen = []
         for pt in _intersection_points(inter):
@@ -363,23 +366,23 @@ def geometry_problems(g, check_multipart=False):
         try:
             if err.hasWhere():
                 where = QgsPointXY(err.where())
-        except Exception:
+        except Exception:  # nosec B110
             pass
         out.append((str(err.what()) or _tr('几何无效'), where))
     gt = g.type()
-    if gt == QgsWkbTypes.LineGeometry:
+    if gt == QgsWkbTypes.GeometryType.LineGeometry:
         try:
             if g.length() <= 0:
                 out.append((_tr('长度为0'), None))
             elif not g.isSimple():
                 out.append((_tr('线自相交'), None))
-        except Exception:
+        except Exception:  # nosec B110
             pass
-    elif gt == QgsWkbTypes.PolygonGeometry and not out:
+    elif gt == QgsWkbTypes.GeometryType.PolygonGeometry and not out:
         try:
             if g.area() <= 0:
                 out.append((_tr('面积为0'), None))
-        except Exception:
+        except Exception:  # nosec B110
             pass
     if check_multipart and g.isMultipart() and _part_count(g) > 1:
         out.append((_tr('多部件（{0}个）').format(_part_count(g)), None))
@@ -410,7 +413,7 @@ def run_geom_validity_snap(iface, project, target_layers, params):
                     if xf is not None:
                         try:
                             pt = xf.transform(where)
-                        except Exception:
+                        except Exception:  # nosec B112
                             continue
                     loc_rows.append((pt, [lyr.name(), int(f.id()), text]))
             if bool(probs) == snap_enabled:
@@ -432,7 +435,7 @@ def run_geom_validity_snap(iface, project, target_layers, params):
 # ---------------------------------------------------------------- 面积筛选
 
 def run_poly_area_snap(iface, project, target_layers, params):
-    poly_layers = _layers_of(target_layers, (QgsWkbTypes.PolygonGeometry,))
+    poly_layers = _layers_of(target_layers, (QgsWkbTypes.GeometryType.PolygonGeometry,))
     if not poly_layers:
         return _fail(iface, params, _tr('【筛选】按面积筛选：请选择面图层'))
     snap_enabled = bool(params.get('snap_enabled', False))
@@ -476,7 +479,7 @@ def _gather_any_workspace(layers, base_crs, project, category_filters=None):
             if xf is not None:
                 try:
                     g.transform(xf)
-                except Exception:
+                except Exception:  # nosec B112
                     continue
             out.append((lyr, int(f.id()), g))
     return out
@@ -487,10 +490,10 @@ def _vertex_sequences(g):
     try:
         if QgsWkbTypes.isCurvedType(g.wkbType()):
             g = QgsGeometry(g.constGet().segmentize())
-    except Exception:
+    except Exception:  # nosec B110
         pass
     seqs = []
-    if g.type() == QgsWkbTypes.PolygonGeometry:
+    if g.type() == QgsWkbTypes.GeometryType.PolygonGeometry:
         try:
             polys = g.asMultiPolygon() if g.isMultipart() else [g.asPolygon()]
         except Exception:
@@ -502,7 +505,7 @@ def _vertex_sequences(g):
                     pts = pts[:-1]
                 if len(pts) >= 3:
                     seqs.append((pts, True))
-    elif g.type() == QgsWkbTypes.LineGeometry:
+    elif g.type() == QgsWkbTypes.GeometryType.LineGeometry:
         for pts in _line_vertices_by_parts(g):
             closed = len(pts) >= 4 and pts[0] == pts[-1]
             seqs.append((pts[:-1] if closed else pts, closed))
@@ -553,7 +556,7 @@ def vertex_quality_issues(pts, closed, spike_deg, dense_m, da, geographic):
 
 
 def run_vertex_quality_snap(iface, project, target_layers, params):
-    layers = _layers_of(target_layers, (QgsWkbTypes.LineGeometry, QgsWkbTypes.PolygonGeometry))
+    layers = _layers_of(target_layers, (QgsWkbTypes.GeometryType.LineGeometry, QgsWkbTypes.GeometryType.PolygonGeometry))
     if not layers:
         return _fail(iface, params, _tr('【质检】尖角 / 回头线 / 过密顶点：请选择线或面图层'))
     spike = _float_param(params, '_spike_angle')
@@ -582,7 +585,7 @@ def run_vertex_quality_snap(iface, project, target_layers, params):
 # ---------------------------------------------------------------- 点过近
 
 def run_point_near_snap(iface, project, target_layers, params):
-    pt_layers = _layers_of(target_layers, (QgsWkbTypes.PointGeometry,))
+    pt_layers = _layers_of(target_layers, (QgsWkbTypes.GeometryType.PointGeometry,))
     if not pt_layers:
         return _fail(iface, params, _tr('【距离】点与点过近：请选择点图层'))
     snap_enabled = bool(params.get('snap_enabled', False))
@@ -594,10 +597,13 @@ def run_point_near_snap(iface, project, target_layers, params):
     pts = _gather_points_workspace(pt_layers, base_crs, project, params.get('_category_target'))
 
     index = QgsSpatialIndex()
+    stubs = []
     for n, (_lyr, _fid, p) in enumerate(pts):
         stub = QgsFeature(n)
         stub.setGeometry(QgsGeometry.fromPointXY(p))
-        index.addFeature(stub)
+        stubs.append(stub)
+    from .qtutil import add_index_features
+    add_index_features(index, stubs)
 
     best = {}
     for n, (lyr, fid, p) in enumerate(pts):

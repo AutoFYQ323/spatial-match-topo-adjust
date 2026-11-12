@@ -106,7 +106,7 @@ SNAP_KIND_OVERLAP = 'overlap_self'
 
 
 def _polyline_length_meters(geom, da):
-    if geom.type() != QgsWkbTypes.LineGeometry or geom.isEmpty():
+    if geom.type() != QgsWkbTypes.GeometryType.LineGeometry or geom.isEmpty():
         return None
     try:
         if geom.isMultipart():
@@ -301,9 +301,9 @@ def _append_point_centroid_layer(
             continue
         try:
             c = g.centroid()
-        except Exception:
+        except Exception:  # nosec B112
             continue
-        if c.isEmpty() or c.type() != QgsWkbTypes.PointGeometry:
+        if c.isEmpty() or c.type() != QgsWkbTypes.GeometryType.PointGeometry:
             continue
         pt = c.asPoint()
         ox = QgsFeature(nf.fields())
@@ -344,7 +344,7 @@ def run_polygon_snap_branch(iface, project, target_layers, params):
     da.setSourceCrs(base_crs, ctx)
     try:
         da.setEllipsoid(base_crs.ellipsoidAcronym())
-    except Exception:
+    except Exception:  # nosec B110
         pass
 
     crs_auth = base_crs.authid()
@@ -610,7 +610,7 @@ def run_line_length_snap(iface, project, target_layers, params):
     da.setSourceCrs(base_crs, ctx)
     try:
         da.setEllipsoid(base_crs.ellipsoidAcronym())
-    except Exception:
+    except Exception:  # nosec B110
         pass
 
     pairs = []
@@ -621,7 +621,7 @@ def run_line_length_snap(iface, project, target_layers, params):
             if xf:
                 try:
                     g.transform(xf)
-                except Exception:
+                except Exception:  # nosec B112
                     continue
             mlen = _polyline_length_meters(g, da)
             ok_rule = evaluate_length_rule(mlen, rule)
@@ -686,9 +686,9 @@ def _gather_points_workspace(layers, base_crs, project, category_filters=None):
             if xf:
                 try:
                     g.transform(xf)
-                except Exception:
+                except Exception:  # nosec B112
                     continue
-            if g.type() != QgsWkbTypes.PointGeometry:
+            if g.type() != QgsWkbTypes.GeometryType.PointGeometry:
                 continue
             if g.isMultipart():
                 mq = g.asMultiPoint()
@@ -720,9 +720,9 @@ def _gather_lines_workspace(layers, base_crs, project, category_filters=None):
             if xf:
                 try:
                     g.transform(xf)
-                except Exception:
+                except Exception:  # nosec B112
                     continue
-            if g.type() != QgsWkbTypes.LineGeometry:
+            if g.type() != QgsWkbTypes.GeometryType.LineGeometry:
                 continue
             idx = len(items)
             items.append((idx, lyr, int(f.id()), g))
@@ -799,7 +799,7 @@ def _polyline_closed_like(pts, tol):
 def _line_vertices_by_parts(geom):
     """折线/多折线：按部件拆成顶点序列列表；曲线尝试 segmentize。"""
     g = QgsGeometry(geom)
-    if g.isEmpty() or g.type() != QgsWkbTypes.LineGeometry:
+    if g.isEmpty() or g.type() != QgsWkbTypes.GeometryType.LineGeometry:
         return []
     out = []
     try:
@@ -818,9 +818,9 @@ def _line_vertices_by_parts(geom):
         try:
             seg = QgsGeometry(geom)
             seg = seg.segmentize()
-            if not seg.isEmpty() and seg.type() == QgsWkbTypes.LineGeometry:
+            if not seg.isEmpty() and seg.type() == QgsWkbTypes.GeometryType.LineGeometry:
                 return _line_vertices_by_parts(seg)
-        except Exception:
+        except Exception:  # nosec B110
             pass
     return out
 
@@ -864,7 +864,7 @@ def _polygon_single_part_match(poly1, poly2, tol):
 def _polygon_pair_vertices_coincident(g1, g2, tol):
     if g1.isEmpty() or g2.isEmpty():
         return False
-    if g1.type() != QgsWkbTypes.PolygonGeometry or g2.type() != QgsWkbTypes.PolygonGeometry:
+    if g1.type() != QgsWkbTypes.GeometryType.PolygonGeometry or g2.type() != QgsWkbTypes.GeometryType.PolygonGeometry:
         return False
     try:
         if g1.isMultipart():
@@ -883,15 +883,18 @@ def _index_candidate_pairs(geoms, tol, spat_index=None):
     spat_index 为 None 时自建；自带索引须以 geoms 的键作为要素 ID。"""
     if spat_index is None:
         spat_index = QgsSpatialIndex()
+        stubs = []
         for i, g in geoms.items():
             stub = QgsFeature(int(i))
             stub.setGeometry(g)
-            spat_index.addFeature(stub)
+            stubs.append(stub)
+        from .qtutil import add_index_features
+        add_index_features(spat_index, stubs)
     for i in sorted(geoms.keys()):
         try:
             rect = QgsRectangle(geoms[i].boundingBox())
             rect.grow(max(tol, 1e-12))
-        except Exception:
+        except Exception:  # nosec B112
             continue
         for j in spat_index.intersects(rect):
             if j > i and j in geoms:
@@ -923,7 +926,7 @@ def compute_overlap_pairs(target_layers, params, base_crs, project, da):
                 if _polygon_pair_vertices_coincident(gi, gj, tol):
                     hit_ids.add(iai)
                     hit_ids.add(jbj)
-            except Exception:
+            except Exception:  # nosec B112
                 continue
         for idx in meta:
             lyr, fid, _ = meta[idx]
@@ -976,7 +979,7 @@ def compute_overlap_pairs(target_layers, params, base_crs, project, da):
                 if _line_pair_vertices_coincident(g1, g2, tol):
                     hit_idx.add(iai)
                     hit_idx.add(jbj)
-            except Exception:
+            except Exception:  # nosec B112
                 continue
         for i in ks:
             lyr, fid = meta[i]
@@ -991,9 +994,9 @@ def compute_overlap_pairs(target_layers, params, base_crs, project, da):
 
 def _write_overlap_memory_layer(project, crs_auth, pairs_out, output_tag):
     geom_map = {
-        QgsWkbTypes.PointGeometry: 'Point',
-        QgsWkbTypes.LineGeometry: 'LineString',
-        QgsWkbTypes.PolygonGeometry: 'Polygon',
+        QgsWkbTypes.GeometryType.PointGeometry: 'Point',
+        QgsWkbTypes.GeometryType.LineGeometry: 'LineString',
+        QgsWkbTypes.GeometryType.PolygonGeometry: 'Polygon',
     }
     if not pairs_out:
         return None
@@ -1058,13 +1061,13 @@ def run_overlap_snap(iface, project, target_layers, params):
         wanted_gs = list(type_groups.keys())
     else:
         kind_to_geom = {
-            'point': QgsWkbTypes.PointGeometry,
-            'line': QgsWkbTypes.LineGeometry,
-            'polygon': QgsWkbTypes.PolygonGeometry,
+            'point': QgsWkbTypes.GeometryType.PointGeometry,
+            'line': QgsWkbTypes.GeometryType.LineGeometry,
+            'polygon': QgsWkbTypes.GeometryType.PolygonGeometry,
         }
         wk = kind_to_geom.get(overlap_kind)
         if wk is None:
-            wk = QgsWkbTypes.PolygonGeometry
+            wk = QgsWkbTypes.GeometryType.PolygonGeometry
         wanted_gs = [wk]
 
     base_crs = target_layers[0].crs()
@@ -1073,7 +1076,7 @@ def run_overlap_snap(iface, project, target_layers, params):
     da.setSourceCrs(base_crs, ctx)
     try:
         da.setEllipsoid(base_crs.ellipsoidAcronym())
-    except Exception:
+    except Exception:  # nosec B110
         pass
 
     crs_auth = base_crs.authid()
@@ -1089,9 +1092,9 @@ def run_overlap_snap(iface, project, target_layers, params):
         if not sub_layers:
             continue
         kind_tag = {
-            QgsWkbTypes.PointGeometry: 'point',
-            QgsWkbTypes.LineGeometry: 'line',
-            QgsWkbTypes.PolygonGeometry: 'polygon',
+            QgsWkbTypes.GeometryType.PointGeometry: 'point',
+            QgsWkbTypes.GeometryType.LineGeometry: 'line',
+            QgsWkbTypes.GeometryType.PolygonGeometry: 'polygon',
         }.get(geom_k, 'unk')
         p_kind = dict(params)
         p_kind['_overlap_kind'] = kind_tag
@@ -1192,9 +1195,9 @@ def _count_output_mates_of(params):
 def _emit_count_feature_groups(project, params, snap_enabled, by_lyr, layers_created, extra_tag=''):
     """by_lyr: OrderedDict[layer, list[QgsFeature]]。extra_tag 非空时追加到临时图层名。"""
     type_map = {
-        QgsWkbTypes.PointGeometry: 'Point',
-        QgsWkbTypes.LineGeometry: 'LineString',
-        QgsWkbTypes.PolygonGeometry: 'Polygon',
+        QgsWkbTypes.GeometryType.PointGeometry: 'Point',
+        QgsWkbTypes.GeometryType.LineGeometry: 'LineString',
+        QgsWkbTypes.GeometryType.PolygonGeometry: 'Polygon',
     }
     for lyr in by_lyr:
         features = by_lyr[lyr]
@@ -1246,7 +1249,7 @@ def _lines_hitting_point(ptg, ref_entries, ref_idx, tol, attach):
         if cid < 0 or cid >= len(ref_entries):
             continue
         e = ref_entries[cid]
-        if e['geom'].type() != QgsWkbTypes.LineGeometry:
+        if e['geom'].type() != QgsWkbTypes.GeometryType.LineGeometry:
             continue
         key = (e['layer'].id(), int(e['fid']))
         if key in seen:
@@ -1269,7 +1272,7 @@ def _points_hitting_line(line_g, ref_entries, ref_idx, tol, attach):
         if cid < 0 or cid >= len(ref_entries):
             continue
         e = ref_entries[cid]
-        if e['geom'].type() != QgsWkbTypes.PointGeometry:
+        if e['geom'].type() != QgsWkbTypes.GeometryType.PointGeometry:
             continue
         key = (e['layer'].id(), int(e['fid']))
         if key in seen:
@@ -1303,13 +1306,13 @@ def run_point_line_count_snap(iface, project, target_layers, ref_layers, params)
             QMessageBox.warning(mw, _tr('提示'), err)
         return {'ok': False, 'error': err, 'spatial_mode': '__special__'}
     for lyr in target_layers:
-        if _layer_geom_class(lyr) != QgsWkbTypes.PointGeometry:
+        if _layer_geom_class(lyr) != QgsWkbTypes.GeometryType.PointGeometry:
             err = _tr('【计数】点上接了几条线：判断图层须为点图层')
             if show_m and mw:
                 QMessageBox.warning(mw, _tr('提示'), err)
             return {'ok': False, 'error': err, 'spatial_mode': '__special__'}
     for lyr in ref_layers:
-        if _layer_geom_class(lyr) != QgsWkbTypes.LineGeometry:
+        if _layer_geom_class(lyr) != QgsWkbTypes.GeometryType.LineGeometry:
             err = _tr('【计数】点上接了几条线：参考图层须均为线图层')
             if show_m and mw:
                 QMessageBox.warning(mw, _tr('提示'), err)
@@ -1337,9 +1340,9 @@ def run_point_line_count_snap(iface, project, target_layers, ref_layers, params)
             if xf:
                 try:
                     g.transform(xf)
-                except Exception:
+                except Exception:  # nosec B112
                     continue
-            if g.type() != QgsWkbTypes.PointGeometry:
+            if g.type() != QgsWkbTypes.GeometryType.PointGeometry:
                 continue
             mq = g.asMultiPoint() if g.isMultipart() else [g.asPoint()]
             max_n = 0
@@ -1401,13 +1404,13 @@ def run_line_point_count_snap(iface, project, target_layers, ref_layers, params)
             QMessageBox.warning(mw, _tr('提示'), err)
         return {'ok': False, 'error': err, 'spatial_mode': '__special__'}
     for lyr in target_layers:
-        if _layer_geom_class(lyr) != QgsWkbTypes.LineGeometry:
+        if _layer_geom_class(lyr) != QgsWkbTypes.GeometryType.LineGeometry:
             err = _tr('【计数】线上挂了几个点：判断图层须为线图层')
             if show_m and mw:
                 QMessageBox.warning(mw, _tr('提示'), err)
             return {'ok': False, 'error': err, 'spatial_mode': '__special__'}
     for lyr in ref_layers:
-        if _layer_geom_class(lyr) != QgsWkbTypes.PointGeometry:
+        if _layer_geom_class(lyr) != QgsWkbTypes.GeometryType.PointGeometry:
             err = _tr('【计数】线上挂了几个点：参考图层须均为点图层')
             if show_m and mw:
                 QMessageBox.warning(mw, _tr('提示'), err)
@@ -1435,9 +1438,9 @@ def run_line_point_count_snap(iface, project, target_layers, ref_layers, params)
             if xf:
                 try:
                     g.transform(xf)
-                except Exception:
+                except Exception:  # nosec B112
                     continue
-            if g.type() != QgsWkbTypes.LineGeometry:
+            if g.type() != QgsWkbTypes.GeometryType.LineGeometry:
                 continue
             n_pt, mates = _points_hitting_line(g, ref_entries, ref_idx, tol, attach)
             ok_rule = evaluate_count_rule(n_pt, rule)
@@ -1490,13 +1493,13 @@ def run_polygon_point_count_snap(iface, project, target_layers, ref_layers, para
             QMessageBox.warning(mw, _tr('提示'), err)
         return {'ok': False, 'error': err, 'spatial_mode': '__special__'}
     for lyr in target_layers:
-        if _layer_geom_class(lyr) != QgsWkbTypes.PolygonGeometry:
+        if _layer_geom_class(lyr) != QgsWkbTypes.GeometryType.PolygonGeometry:
             err = _tr('【计数】面内有几个点：判断图层须为面图层')
             if show_m and mw:
                 QMessageBox.warning(mw, _tr('提示'), err)
             return {'ok': False, 'error': err, 'spatial_mode': '__special__'}
     for lyr in ref_layers:
-        if _layer_geom_class(lyr) != QgsWkbTypes.PointGeometry:
+        if _layer_geom_class(lyr) != QgsWkbTypes.GeometryType.PointGeometry:
             err = _tr('【计数】面内有几个点：参考图层须均为点图层')
             if show_m and mw:
                 QMessageBox.warning(mw, _tr('提示'), err)
@@ -1522,9 +1525,9 @@ def run_polygon_point_count_snap(iface, project, target_layers, ref_layers, para
             if xf:
                 try:
                     g.transform(xf)
-                except Exception:
+                except Exception:  # nosec B112
                     continue
-            if g.type() != QgsWkbTypes.PolygonGeometry:
+            if g.type() != QgsWkbTypes.GeometryType.PolygonGeometry:
                 continue
             rect = _rect_grow(g.boundingBox(), tol)
             cand_ids = ref_idx.intersects(rect)
@@ -1534,7 +1537,7 @@ def run_polygon_point_count_snap(iface, project, target_layers, ref_layers, para
                 if cid < 0 or cid >= len(ref_entries):
                     continue
                 e = ref_entries[cid]
-                if e['geom'].type() != QgsWkbTypes.PointGeometry:
+                if e['geom'].type() != QgsWkbTypes.GeometryType.PointGeometry:
                     continue
                 key = (e['layer'].id(), int(e['fid']))
                 if key in seen:
@@ -1608,13 +1611,13 @@ def run_polygon_line_count_snap(iface, project, target_layers, ref_layers, param
             QMessageBox.warning(mw, _tr('提示'), err)
         return {'ok': False, 'error': err, 'spatial_mode': '__special__'}
     for lyr in target_layers:
-        if _layer_geom_class(lyr) != QgsWkbTypes.PolygonGeometry:
+        if _layer_geom_class(lyr) != QgsWkbTypes.GeometryType.PolygonGeometry:
             err = _tr('【计数】与面相交的线有几条：判断图层须为面图层')
             if show_m and mw:
                 QMessageBox.warning(mw, _tr('提示'), err)
             return {'ok': False, 'error': err, 'spatial_mode': '__special__'}
     for lyr in ref_layers:
-        if _layer_geom_class(lyr) != QgsWkbTypes.LineGeometry:
+        if _layer_geom_class(lyr) != QgsWkbTypes.GeometryType.LineGeometry:
             err = _tr('【计数】与面相交的线有几条：参考图层须均为线图层')
             if show_m and mw:
                 QMessageBox.warning(mw, _tr('提示'), err)
@@ -1640,9 +1643,9 @@ def run_polygon_line_count_snap(iface, project, target_layers, ref_layers, param
             if xf:
                 try:
                     g.transform(xf)
-                except Exception:
+                except Exception:  # nosec B112
                     continue
-            if g.type() != QgsWkbTypes.PolygonGeometry:
+            if g.type() != QgsWkbTypes.GeometryType.PolygonGeometry:
                 continue
             rect = _rect_grow(g.boundingBox(), tol)
             cand_ids = ref_idx.intersects(rect)
@@ -1652,7 +1655,7 @@ def run_polygon_line_count_snap(iface, project, target_layers, ref_layers, param
                 if cid < 0 or cid >= len(ref_entries):
                     continue
                 e = ref_entries[cid]
-                if e['geom'].type() != QgsWkbTypes.LineGeometry:
+                if e['geom'].type() != QgsWkbTypes.GeometryType.LineGeometry:
                     continue
                 key = (e['layer'].id(), int(e['fid']))
                 if key in seen:
@@ -1727,7 +1730,7 @@ def _style_line_end_points(layer, pair_count):
             QgsSimpleMarkerSymbolLayer.PropertyShape,
             QgsProperty.fromExpression("if(\"端\"='起点','circle','square')"),
         )
-    except Exception:
+    except Exception:  # nosec B110
         pass
     categories = []
     for n in range(1, int(pair_count) + 1):
@@ -1736,7 +1739,7 @@ def _style_line_end_points(layer, pair_count):
         sym.setColor(color)
         try:
             sym.symbolLayer(0).setStrokeColor(color.darker(130))
-        except Exception:
+        except Exception:  # nosec B110
             pass
         categories.append(QgsRendererCategory(n, sym, str(n), True))
     layer.setRenderer(QgsCategorizedSymbolRenderer('序号', categories))
@@ -1745,14 +1748,14 @@ def _style_line_end_points(layer, pair_count):
         pal.fieldName = '标记'
         pal.enabled = True
         try:
-            pal.placement = QgsPalLayerSettings.OverPoint
-        except Exception:
+            pal.placement = QgsPalLayerSettings.PredefinedPointPosition.OverPoint
+        except Exception:  # nosec B110
             pass
         try:
             from qgis.core import QgsUnitTypes
             pal.yOffset = 2.4
-            pal.offsetUnits = QgsUnitTypes.RenderMillimeters
-        except Exception:
+            pal.offsetUnits = QgsUnitTypes.RenderUnit.RenderMillimeters
+        except Exception:  # nosec B110
             pass
         fmt = QgsTextFormat()
         fmt.setSize(9)
@@ -1762,7 +1765,7 @@ def _style_line_end_points(layer, pair_count):
             font = QFont()
             font.setBold(True)
             fmt.setFont(font)
-        except Exception:
+        except Exception:  # nosec B110
             pass
         buf = QgsTextBufferSettings()
         buf.setEnabled(True)
@@ -1778,11 +1781,11 @@ def _style_line_end_points(layer, pair_count):
                 color_key,
                 QgsProperty.fromField('颜色'),
             )
-        except Exception:
+        except Exception:  # nosec B110
             pass
         layer.setLabeling(QgsVectorLayerSimpleLabeling(pal))
         layer.setLabelsEnabled(True)
-    except Exception:
+    except Exception:  # nosec B110
         pass
     layer.triggerRepaint()
 
@@ -1793,7 +1796,7 @@ def run_line_ends_snap(iface, project, target_layers, params):
     created = []
     marked = 0
     for lyr in target_layers or []:
-        if _layer_geom_class(lyr) != QgsWkbTypes.LineGeometry:
+        if _layer_geom_class(lyr) != QgsWkbTypes.GeometryType.LineGeometry:
             continue
         pending = []
         n = 0
@@ -1858,7 +1861,7 @@ def _iter_linestring_parts(geom):
         gtype = QgsWkbTypes.geometryType(geom.wkbType())
     except Exception:
         return
-    if gtype == QgsWkbTypes.LineGeometry:
+    if gtype == QgsWkbTypes.GeometryType.LineGeometry:
         if QgsWkbTypes.isMultiType(geom.wkbType()):
             try:
                 for sub in geom.asGeometryCollection():
@@ -1888,7 +1891,7 @@ def _as_2d_line(geom):
             seg = g.segmentize()
             if seg is not None and not seg.isEmpty():
                 g = seg
-    except Exception:
+    except Exception:  # nosec B110
         pass
     try:
         ag = g.get()
@@ -1897,7 +1900,7 @@ def _as_2d_line(geom):
                 ag.dropZValue()
             if QgsWkbTypes.hasM(g.wkbType()):
                 ag.dropMValue()
-    except Exception:
+    except Exception:  # nosec B110
         pass
     return g
 
@@ -1907,7 +1910,7 @@ def _geom_length_m(geom, da):
         m = da.measureLength(geom)
         if m is not None and float(m) > 0:
             return float(m)
-    except Exception:
+    except Exception:  # nosec B110
         pass
     return _polyline_length_meters(geom, da)
 
@@ -1998,7 +2001,7 @@ def _substring_by_chainage(geom, start_d, end_d):
         sub = geom.curveSubstring(start_d, end_d)
         if sub is not None and not sub.isEmpty():
             return sub
-    except Exception:
+    except Exception:  # nosec B110
         pass
     try:
         p0 = geom.interpolate(start_d).asPoint()
@@ -2033,15 +2036,15 @@ def _overlap_midpoint(line_geom):
     if length > 0:
         try:
             mid = line_geom.interpolate(length * 0.5)
-            if mid is not None and not mid.isEmpty() and mid.type() == QgsWkbTypes.PointGeometry:
+            if mid is not None and not mid.isEmpty() and mid.type() == QgsWkbTypes.GeometryType.PointGeometry:
                 return mid
-        except Exception:
+        except Exception:  # nosec B110
             pass
     try:
         c = line_geom.centroid()
         if c is not None and not c.isEmpty():
             return c
-    except Exception:
+    except Exception:  # nosec B110
         pass
     return None
 
@@ -2061,7 +2064,7 @@ def run_line_overlap_centers_snap(iface, project, target_layers, params):
     if tol < 0:
         tol = 0.0
 
-    line_layers = [lyr for lyr in (target_layers or []) if _layer_geom_class(lyr) == QgsWkbTypes.LineGeometry]
+    line_layers = [lyr for lyr in (target_layers or []) if _layer_geom_class(lyr) == QgsWkbTypes.GeometryType.LineGeometry]
     if not line_layers:
         err = _tr('【线】两线重叠段：请选择线图层')
         if show_m and mw:
@@ -2074,7 +2077,7 @@ def run_line_overlap_centers_snap(iface, project, target_layers, params):
     da.setSourceCrs(base_crs, ctx)
     try:
         da.setEllipsoid(base_crs.ellipsoidAcronym())
-    except Exception:
+    except Exception:  # nosec B110
         pass
 
     geoms, meta = _gather_lines_workspace(
@@ -2091,11 +2094,14 @@ def run_line_overlap_centers_snap(iface, project, target_layers, params):
         geoms[i] = _as_2d_line(geoms[i])
 
     index = QgsSpatialIndex()
+    stubs = []
     for i in keys:
         stub = QgsFeature()
         stub.setId(int(i) + 1)
         stub.setGeometry(geoms[i])
-        index.addFeature(stub)
+        stubs.append(stub)
+    from .qtutil import add_index_features
+    add_index_features(index, stubs)
 
     pieces = []
     eff_tol = tol if tol > 0 else 1e-9
@@ -2106,7 +2112,7 @@ def run_line_overlap_centers_snap(iface, project, target_layers, params):
             rect = QgsRectangle(g1.boundingBox())
             if eff_tol > 0:
                 rect.grow(eff_tol)
-        except Exception:
+        except Exception:  # nosec B112
             continue
         for jid in index.intersects(rect):
             j = int(jid) - 1
@@ -2154,7 +2160,7 @@ def run_line_overlap_centers_snap(iface, project, target_layers, params):
                 continue
             try:
                 pt = mid.asPoint()
-            except Exception:
+            except Exception:  # nosec B112
                 continue
             if any(_planar_pt_distance(pt, old) <= 1e-6 for old in seen_xy):
                 continue
@@ -2597,13 +2603,13 @@ def run_point_line_chain_snap(iface, project, target_layers, ref_layers, params)
             QMessageBox.warning(mw, _tr('提示'), err)
         return {'ok': False, 'error': err, 'spatial_mode': '__special__'}
     for lyr in target_layers:
-        if _layer_geom_class(lyr) != QgsWkbTypes.PointGeometry:
+        if _layer_geom_class(lyr) != QgsWkbTypes.GeometryType.PointGeometry:
             err = _tr('【拓扑】从点出发的连续线段数：判断图层须为点图层')
             if show_m and mw:
                 QMessageBox.warning(mw, _tr('提示'), err)
             return {'ok': False, 'error': err, 'spatial_mode': '__special__'}
     for lyr in ref_layers:
-        if _layer_geom_class(lyr) != QgsWkbTypes.LineGeometry:
+        if _layer_geom_class(lyr) != QgsWkbTypes.GeometryType.LineGeometry:
             err = _tr('【拓扑】从点出发的连续线段数：参考图层须为线图层')
             if show_m and mw:
                 QMessageBox.warning(mw, _tr('提示'), err)
@@ -2633,9 +2639,9 @@ def run_point_line_chain_snap(iface, project, target_layers, ref_layers, params)
             if xf:
                 try:
                     g.transform(xf)
-                except Exception:
+                except Exception:  # nosec B112
                     continue
-            if g.type() != QgsWkbTypes.PointGeometry:
+            if g.type() != QgsWkbTypes.GeometryType.PointGeometry:
                 continue
             pts = g.asMultiPoint() if g.isMultipart() else [g.asPoint()]
             for pq in pts:
@@ -2652,9 +2658,9 @@ def run_point_line_chain_snap(iface, project, target_layers, ref_layers, params)
             if xf:
                 try:
                     g.transform(xf)
-                except Exception:
+                except Exception:  # nosec B112
                     continue
-            if g.type() != QgsWkbTypes.LineGeometry:
+            if g.type() != QgsWkbTypes.GeometryType.LineGeometry:
                 continue
             try:
                 if g.isMultipart():
@@ -2678,7 +2684,7 @@ def run_point_line_chain_snap(iface, project, target_layers, ref_layers, params)
                     i1 = len(raw_points)
                     raw_points.append(QgsPointXY(pl[-1]))
                     line_end_refs.append((i0, i1, lyr, int(f.id()), 0))
-            except Exception:
+            except Exception:  # nosec B112
                 continue
 
     if not raw_points:
@@ -2775,7 +2781,7 @@ def run_point_line_chain_snap(iface, project, target_layers, ref_layers, params)
             if xf_pt:
                 try:
                     gg.transform(xf_pt)
-                except Exception:
+                except Exception:  # nosec B112
                     continue
             ox = QgsFeature(lyr_mem.fields())
             al = list(rf.attributes())[: lyr_mem.fields().count()]
@@ -2813,7 +2819,7 @@ def run_point_line_chain_snap(iface, project, target_layers, ref_layers, params)
             if xf_ln:
                 try:
                     g0.transform(xf_ln)
-                except Exception:
+                except Exception:  # nosec B112
                     continue
             try:
                 if g0.isMultipart():
@@ -2825,7 +2831,7 @@ def run_point_line_chain_snap(iface, project, target_layers, ref_layers, params)
                     if pidx != 0:
                         continue
                     seg = QgsGeometry(g0)
-            except Exception:
+            except Exception:  # nosec B112
                 continue
             if seg.isEmpty():
                 continue

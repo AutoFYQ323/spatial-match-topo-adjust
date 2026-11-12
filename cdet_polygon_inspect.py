@@ -32,6 +32,7 @@ def gather_polygon_workspace(layers, base_crs, project, category_filters=None):
     extent.setMinimal()
 
     idx_key = -1
+    stubs = []
 
     def _xf(lyr):
         if lyr.crs() == base_crs:
@@ -52,7 +53,7 @@ def gather_polygon_workspace(layers, base_crs, project, category_filters=None):
             if xf:
                 try:
                     g.transform(xf)
-                except Exception:
+                except Exception:  # nosec B112
                     continue
             if not g.isGeosValid():
                 gm = g.makeValid()
@@ -69,7 +70,12 @@ def gather_polygon_workspace(layers, base_crs, project, category_filters=None):
 
             stub = QgsFeature(fid_map)
             stub.setGeometry(g)
-            idx.addFeature(stub)
+            stubs.append(stub)
+    try:
+        from .qtutil import add_index_features
+    except ImportError:
+        from qtutil import add_index_features
+    add_index_features(idx, stubs)
     return valid_geoms, meta, extent, idx
 
 
@@ -86,7 +92,7 @@ def intersecting_feature_pairs(valid_geoms, idx, tolerance_m2, distance_area):
 
 def _polygon_parts_of_intersection(inter):
     """将面相交结果拆成单独的多边形片段（单部/多部）。"""
-    if inter.isEmpty() or inter.type() != QgsWkbTypes.PolygonGeometry:
+    if inter.isEmpty() or inter.type() != QgsWkbTypes.GeometryType.PolygonGeometry:
         return []
     out = []
     try:
@@ -97,7 +103,7 @@ def _polygon_parts_of_intersection(inter):
                     out.append(pg)
         else:
             out.append(QgsGeometry(inter))
-    except Exception:
+    except Exception:  # nosec B110
         pass
     return out
 
@@ -112,13 +118,13 @@ def _geom_boundary(geom):
             b = c.boundary()
             if b:
                 return QgsGeometry(b)
-    except Exception:
+    except Exception:  # nosec B110
         pass
     try:
         bn = geom.boundary()
         if bn and not bn.isEmpty():
             return bn
-    except Exception:
+    except Exception:  # nosec B110
         pass
     return None
 
@@ -243,7 +249,7 @@ def detect_holes_gaps(valid_geoms, layer_extent_rect, tolerance_m2, distance_are
                             ln = abs(distance_area.measureLength(touch))
                             if ln > min_edge:
                                 is_outer = True
-                except Exception:
+                except Exception:  # nosec B110
                     pass
                 gaps.append((a_m2, gap_single, is_outer))
 

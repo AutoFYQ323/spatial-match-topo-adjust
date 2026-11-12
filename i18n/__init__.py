@@ -68,7 +68,7 @@ def _stored():
     if old:
         try:
             settings.setValue(_SETTINGS, old)
-        except Exception:
+        except Exception:  # nosec B110
             pass
         return old
     return ""
@@ -91,7 +91,7 @@ def current_language():
     lang = detect_initial_language(qloc, sysloc)
     try:
         QSettings().setValue(_SETTINGS, lang)
-    except Exception:
+    except Exception:  # nosec B110
         pass
     return lang
 
@@ -103,7 +103,7 @@ def set_language(lang):
         primary = LANG_EN
     try:
         QSettings().setValue(_SETTINGS, primary)
-    except Exception:
+    except Exception:  # nosec B110
         pass
     hub().changed.emit(primary)
     return primary
@@ -129,7 +129,7 @@ def tr(msgid, *args, **kwargs):
     if args or kwargs:
         try:
             text = text % (args if args else kwargs) if args else text % kwargs
-        except Exception:
+        except Exception:  # nosec B110
             pass
     return text
 

@@ -104,6 +104,8 @@ _LANG_MARKS = {
 }
 
 ACTION_BTN_H = 28
+# Mode switch, refresh, and execute only. About 1.8× ACTION_BTN_H.
+BOTTOM_BTN_H = 50
 FILTER_BTN_H = 48
 ICON_BTN_SIZE = 28
 
@@ -116,7 +118,7 @@ def theme_or_letter(theme_name, letter, color, size=24):
             icon = QgsApplication.getThemeIcon(theme_name)
             if icon is not None and not icon.isNull():
                 return icon
-        except Exception:
+        except Exception:  # nosec B110
             pass
     return letter_badge(letter, color, size)
 
@@ -125,7 +127,7 @@ def letter_badge(letter, color, size=24):
     pix = QPixmap(size, size)
     pix.fill(_transparent())
     painter = QPainter(pix)
-    painter.setRenderHint(QPainter.Antialiasing)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
     painter.setPen(_no_pen())
     painter.setBrush(QColor(color))
     rad = max(2.0, size * 0.16)
@@ -178,7 +180,7 @@ def filter_icon(kind, size=18, color="#1565c0"):
     pix = QPixmap(size, size)
     pix.fill(_transparent())
     painter = QPainter(pix)
-    painter.setRenderHint(QPainter.Antialiasing)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
     painter.setPen(_no_pen())
     painter.setBrush(bg)
     painter.drawRoundedRect(QRectF(0, 0, size - 1, size - 1), size * 0.18, size * 0.18)
@@ -238,7 +240,7 @@ def _drawn_mode_icon(kind, size=20):
     pix = QPixmap(size, size)
     pix.fill(_transparent())
     painter = QPainter(pix)
-    painter.setRenderHint(QPainter.Antialiasing)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
     painter.setPen(_no_pen())
     painter.setBrush(bg)
     painter.drawRoundedRect(QRectF(0, 0, size - 1, size - 1), size * 0.18, size * 0.18)
@@ -296,7 +298,7 @@ def style_icon_button(button, icon, tip_src):
     button.setToolTip(tr(tip_src))
     button.setProperty("tip", tip_src)
     button.setCursor(_pointing_hand())
-    button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+    button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
     button.setObjectName("iconToolBtn")
     button.setFocusPolicy(_no_focus())
     button.setCheckable(False)
@@ -327,7 +329,7 @@ def style_filter_button(button, kind, name_src):
     try:
         from qgis.PyQt.QtCore import Qt as _Qt
         button.setToolButtonStyle(_Qt.ToolButtonTextUnderIcon)
-    except Exception:
+    except Exception:  # nosec B110
         pass
     color = FILTER_TITLE_COLORS.get(kind, "#1060c0")
     font = button.font()
@@ -348,13 +350,13 @@ def style_filter_button(button, kind, name_src):
     button.setFixedHeight(FILTER_BTN_H)
     # A long translation must not push the column, or the window jumps when the language changes.
     button.setMinimumWidth(0)
-    button.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
+    button.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
     button.setCheckable(True)
     button.setAutoRaise(True)
     try:
         button.setAutoDefault(False)
         button.setDefault(False)
-    except Exception:
+    except Exception:  # nosec B110
         pass
 
 
@@ -365,8 +367,8 @@ def style_param_label(label, short_src=None, full_src=None):
     label.setFont(font)
     label.setWordWrap(False)
     label.setMinimumWidth(0)
-    label.setFixedHeight(22)
-    label.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
+    label.setFixedHeight(18)
+    label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
     label.setStyleSheet('font-size: 12px; font-weight: 700; color: #212529;')
     src = short_src or full_src
     if src:
@@ -380,20 +382,20 @@ def style_param_label(label, short_src=None, full_src=None):
 
 def configure_fit_combo(combo):
     """Closed combo stays within the right column; the popup may grow."""
-    combo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+    combo.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
     combo.setMinimumWidth(0)
     combo.setMaximumWidth(16777215)
     try:
-        combo.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
-    except Exception:
+        combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+    except Exception:  # nosec B110
         pass
     try:
         combo.setMinimumContentsLength(3)
-    except Exception:
+    except Exception:  # nosec B110
         pass
     try:
         combo.view().setTextElideMode(_elide_none())
-    except Exception:
+    except Exception:  # nosec B110
         pass
     if getattr(combo, "_cdet_popup_patched", False):
         return combo
@@ -411,7 +413,7 @@ def configure_fit_combo(combo):
                     w = fm.boundingRect(text).width()
                 widest = max(widest, w + 36)
             combo.view().setMinimumWidth(int(widest))
-        except Exception:
+        except Exception:  # nosec B110
             pass
         original()
 
@@ -420,14 +422,14 @@ def configure_fit_combo(combo):
     return combo
 
 
-def param_block(label, widget, extra=None):
+def param_block(label, widget, extra=None, spacing=3):
     """Title above the control (one parameter)."""
     from qgis.PyQt.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout
 
     box = QWidget()
     lay = QVBoxLayout(box)
     lay.setContentsMargins(0, 0, 0, 0)
-    lay.setSpacing(3)
+    lay.setSpacing(spacing)
     lay.addWidget(label)
     if extra is None:
         lay.addWidget(widget)

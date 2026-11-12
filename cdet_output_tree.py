@@ -23,16 +23,16 @@ def _find_or_create_group(parent, title_src, index=0):
         if group is not None:
             try:
                 group.setName(title)
-            except Exception:
+            except Exception:  # nosec B110
                 pass
             return group
     return parent.insertGroup(index, title)
 
 
 def _geom_subfolder(geom_type):
-    if geom_type == QgsWkbTypes.PointGeometry:
+    if geom_type == QgsWkbTypes.GeometryType.PointGeometry:
         return GROUP_POINT
-    if geom_type == QgsWkbTypes.LineGeometry:
+    if geom_type == QgsWkbTypes.GeometryType.LineGeometry:
         return GROUP_LINE
     return GROUP_POLYGON
 

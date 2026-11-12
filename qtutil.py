@@ -7,7 +7,7 @@ from qgis.PyQt.QtWidgets import QHeaderView
 def run_dialog(widget):
     try:
         guard_all_combos(widget)
-    except Exception:
+    except Exception:  # nosec B110
         pass
     runner = getattr(widget, "exec_", None)
     if not callable(runner):
@@ -20,6 +20,70 @@ def run_menu(menu, pos):
     if not callable(runner):
         runner = menu.exec
     return runner(pos)
+
+
+def tick_progress(progress, value):
+    """Move the progress bar about eight times a second.
+
+    Updating it on every feature forces a repaint and makes large layers
+    much slower. Cancel is still noticed on that same cadence.
+    """
+    if progress is None:
+        return False
+    try:
+        import time
+        now = time.monotonic()
+    except Exception:
+        now = 0.0
+    last = getattr(progress, "_cdet_tick_at", 0.0)
+    if value <= 1 or (now - last) >= 0.12:
+        try:
+            progress._cdet_tick_at = now
+        except Exception:  # nosec B110
+            pass
+        try:
+            progress.setValue(int(value))
+        except Exception:  # nosec B110
+            pass
+    try:
+        return bool(progress.wasCanceled())
+    except Exception:
+        return False
+
+
+def add_index_features(index, feats):
+    """Fill a spatial index in one call when this QGIS build allows it."""
+    if index is None or not feats:
+        return
+    add_many = getattr(index, "addFeatures", None)
+    if callable(add_many):
+        try:
+            if add_many(feats):
+                return
+        except Exception:  # nosec B110
+            pass
+    for feat in feats:
+        index.addFeature(feat)
+
+
+def add_features_fast(layer, feats):
+    """Write many features in one call. Memory layers skip attribute checks."""
+    if not feats or layer is None:
+        return
+    provider = layer.dataProvider()
+    flags = None
+    try:
+        from qgis.core import QgsFeatureSink
+        flags = QgsFeatureSink.Flag.FastInsert
+    except Exception:
+        flags = None
+    if flags is not None:
+        try:
+            provider.addFeatures(feats, flags)
+            return
+        except Exception:  # nosec B110
+            pass
+    provider.addFeatures(feats)
 
 
 def pointer_pos(event):
@@ -45,7 +109,7 @@ def qvariant_type(name):
         val = getattr(QVariant, name, None)
         if val is not None and not callable(val):
             return val
-    except Exception:
+    except Exception:  # nosec B110
         pass
     try:
         from qgis.PyQt.QtCore import QMetaType
@@ -57,7 +121,7 @@ def qvariant_type(name):
         val = getattr(QMetaType, name, None)
         if val is not None:
             return val
-    except Exception:
+    except Exception:  # nosec B110
         pass
     raise AttributeError("qvariant_type: %s" % name)
 
@@ -70,7 +134,7 @@ def qtype_is(value, name):
         val = getattr(QVariant, name, None)
         if val is not None and not callable(val):
             targets.append(val)
-    except Exception:
+    except Exception:  # nosec B110
         pass
     try:
         from qgis.PyQt.QtCore import QMetaType
@@ -82,7 +146,7 @@ def qtype_is(value, name):
         val = getattr(QMetaType, name, None)
         if val is not None:
             targets.append(val)
-    except Exception:
+    except Exception:  # nosec B110
         pass
     return value in targets
 
@@ -92,7 +156,7 @@ def is_null_qvariant(value):
         from qgis.PyQt.QtCore import QVariant
         if isinstance(value, QVariant):
             return bool(value.isNull())
-    except Exception:
+    except Exception:  # nosec B110
         pass
     return False
 
@@ -171,12 +235,12 @@ class FlowLayout(QLayout):
     def _hspace(self):
         if self._hspacing >= 0:
             return self._hspacing
-        return self._smart_spacing(QStyle.PM_LayoutHorizontalSpacing)
+        return self._smart_spacing(QStyle.PixelMetric.PM_LayoutHorizontalSpacing)
 
     def _vspace(self):
         if self._vspacing >= 0:
             return self._vspacing
-        return self._smart_spacing(QStyle.PM_LayoutVerticalSpacing)
+        return self._smart_spacing(QStyle.PixelMetric.PM_LayoutVerticalSpacing)
 
     def _do_layout(self, rect, test_only):
         m = self.contentsMargins()
@@ -228,7 +292,7 @@ class _ComboWheelGuard(object):
             from qgis.PyQt.QtWidgets import QComboBox, QAbstractSpinBox
         except Exception:
             return False
-        if event.type() != QEvent.Wheel:
+        if event.type() != QEvent.Type.Wheel:
             return False
         # Spin boxes stay wheelable, even if they sit inside a combo-like row.
         if isinstance(obj, QAbstractSpinBox):
@@ -268,7 +332,7 @@ def guard_combo_wheel(combo):
     guard = _wheel_guard()
     try:
         combo.installEventFilter(guard)
-    except Exception:
+    except Exception:  # nosec B110
         pass
     return combo
 
@@ -345,7 +409,7 @@ class AppMessageBox(_QtMessageBox):
         if default_button not in (None, 0):
             try:
                 box.setDefaultButton(default_button)
-            except Exception:
+            except Exception:  # nosec B110
                 pass
         localize_message_box(box)
         return run_dialog(box)
@@ -423,7 +487,7 @@ def ask_item(parent, title, label, items, current=0, editable=False):
     try:
         dlg.setComboBoxItems(values)
         dlg.setComboBoxEditable(bool(editable))
-    except Exception:
+    except Exception:  # nosec B110
         pass
     if values:
         idx = int(current or 0)

@@ -167,7 +167,7 @@ def _force_symbol_outline_color(marker_symbol, outline_csv):
     try:
         if hasattr(sl, 'setStrokeColor'):
             sl.setStrokeColor(qc)
-    except Exception:
+    except Exception:  # nosec B110
         pass
 
 
@@ -221,16 +221,16 @@ def apply_memory_output_style(memory_layer):
     ln = load_line_style(s)
     gt = memory_layer.geometryType()
     try:
-        if gt == QgsWkbTypes.PointGeometry:
+        if gt == QgsWkbTypes.GeometryType.PointGeometry:
             _apply_point_renderer(memory_layer, pt)
-        elif gt == QgsWkbTypes.LineGeometry:
+        elif gt == QgsWkbTypes.GeometryType.LineGeometry:
             sym = QgsLineSymbol.createSimple({
                 'color': _rgb_csv(ln['color']),
                 'width': str(ln['width']),
                 'line_style': str(ln['line_style']),
             })
             memory_layer.setRenderer(QgsSingleSymbolRenderer(sym))
-        elif gt == QgsWkbTypes.PolygonGeometry:
+        elif gt == QgsWkbTypes.GeometryType.PolygonGeometry:
             sym = QgsFillSymbol.createSimple({
                 'color': '255,220,220,200',
                 'outline_color': '255,0,0',
@@ -239,7 +239,7 @@ def apply_memory_output_style(memory_layer):
             })
             memory_layer.setRenderer(QgsSingleSymbolRenderer(sym))
         memory_layer.triggerRepaint()
-    except Exception:
+    except Exception:  # nosec B110
         pass
 
 

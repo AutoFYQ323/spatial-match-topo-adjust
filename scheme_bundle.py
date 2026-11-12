@@ -11,7 +11,7 @@ BUNDLE_FORMAT = "spatial_match_topo_adjust_scheme_bundle_v1"
 BUNDLE_KIND_OLD = "layer_snap_check_scheme_bundle"
 BUNDLE_FORMAT_OLD = "layer_snap_check_scheme_bundle_v1"
 BUNDLE_SCHEMA_VERSION = 1
-PLUGIN_VERSION = "1.0.0"
+PLUGIN_VERSION = "1.0.1"
 
 # Libraries stored under payload["libraries"]
 LIB_SNAP = "snap"

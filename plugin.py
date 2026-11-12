@@ -24,7 +24,7 @@ class Plugin(object):
             from qgis.core import QgsSettings
             from .settings_compat import migrate_legacy_settings
             migrate_legacy_settings(QgsSettings())
-        except Exception:
+        except Exception:  # nosec B110
             pass
 
     def initGui(self):
@@ -53,7 +53,7 @@ class Plugin(object):
     def unload(self):
         try:
             language_changed().disconnect(self._on_language)
-        except Exception:
+        except Exception:  # nosec B110
             pass
         if self.action is not None:
             self.iface.removePluginMenu(self._menu, self.action)

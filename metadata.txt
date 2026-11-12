@@ -3,7 +3,7 @@ name=Spatial Match & Topo Adjust
 qgisMinimumVersion=3.28
 qgisMaximumVersion=4.99
 supportsQt6=True
-version=1.0.0
+version=1.0.2
 author=youyu
 email=jd_sys_xx@163.com
 description=Snap check, field naming, and move tools for vector layers. Check whether features meet within a tolerance, write names from nearby reference features, or preview and write back whole-feature moves.
@@ -18,5 +18,5 @@ deprecated=False
 server=False
 hasProcessingProvider=no
 tags=vector,snap,topology,rename,move,geometry,layers
-changelog=1.0.0
+changelog=1.0.2
     First public release. Snap check, field naming, and whole-feature move, with separate batch-scheme libraries and nine interface languages.
